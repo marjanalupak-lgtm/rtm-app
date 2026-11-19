@@ -46,7 +46,7 @@ export function ProjectsTab(p: {
       {!active.length && (
         <Panel background="surface-main" shadow cx="empty">
           <Text fontSize="16" fontWeight="600">Create your first project</Text>
-          <Text color="secondary">One project = one RTM (e.g. one client, product or study). Requirement IDs are numbered per project.</Text>
+          <Text color="secondary">One project = one RTM (e.g. one client, product, system or release). Requirement IDs are numbered per project.</Text>
         </Panel>
       )}
       <div className="cards">
