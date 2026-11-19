@@ -26,3 +26,4 @@ dist-ssr
 .env
 .superpowers/
 NOTES.local.md
+docs/
