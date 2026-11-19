@@ -41,7 +41,7 @@ export function ProjectsTab(p: {
         {closed > 0 && <Button fill="none" color="secondary" caption={showClosed ? 'Hide closed' : `Show closed (${closed})`} onClick={() => setShowClosed(s => !s)} />}
         {trash.length > 0 && <Button fill="none" color="secondary" caption={showTrash ? 'Hide trash' : `Trash (${trash.length})`} onClick={() => setShowTrash(s => !s)} />}
         {store.mode === 'google' && <Button fill="outline" color="secondary" caption="Open shared project" onClick={p.onOpenShared} />}
-        <Button color="accent" caption="+ Project" onClick={() => p.onEdit(emptyProject())} />
+        <Button color="primary" caption="+ Project" onClick={() => p.onEdit(emptyProject())} />
       </FlexRow>
       {!active.length && (
         <Panel background="surface-main" shadow cx="empty">

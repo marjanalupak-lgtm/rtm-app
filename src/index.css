@@ -1,3 +1,14 @@
+/* Brand accent: EPAM UUI Loveship "violet" palette replaces the default sky-blue primary. */
+.uui-theme-loveship {
+  --uui-primary-5: var(--violet-5);
+  --uui-primary-10: var(--violet-10);
+  --uui-primary-20: var(--violet-20);
+  --uui-primary-50: var(--violet-50);
+  --uui-primary-60: var(--violet-60);
+  --uui-primary-70: var(--violet-70);
+  --uui-primary-contrast: var(--white);
+}
+
 /* Layout on top of EPAM UUI (Loveship theme). Colors/fonts come from UUI tokens. */
 html, body, #root { height: 100%; margin: 0; }
 body { background: var(--uui-app-bg); color: var(--uui-text-primary); font-family: var(--uui-font, 'Source Sans Pro', sans-serif); }
@@ -34,7 +45,7 @@ a:hover { text-decoration: underline; }
 .bar-row { display: grid; grid-template-columns: 140px 1fr 36px; align-items: center; gap: 12px; font-size: 14px; }
 .bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--uui-text-secondary); }
 .bar-track { height: 12px; background: var(--uui-neutral-10, #F5F6FA); border-radius: 3px; overflow: hidden; }
-.bar-fill { display: block; height: 100%; background: var(--uui-primary-50, #0E77D3); border-radius: 3px; }
+.bar-fill { display: block; height: 100%; background: var(--uui-primary-50); border-radius: 3px; }
 .bar-num { text-align: right; font-variant-numeric: tabular-nums; }
 .attn { cursor: pointer; padding: 6px 0; border-bottom: 1px solid var(--uui-divider); }
 .attn:hover { background: var(--uui-neutral-5, #FAFAFC); }
@@ -73,7 +84,7 @@ a:hover { text-decoration: underline; }
 /* Projects */
 .project-pick { width: 220px; margin-right: 12px; }
 .project-card { gap: 12px; }
-.project-card.current { outline: 2px solid var(--uui-primary-50, #0E77D3); }
+.project-card.current { outline: 2px solid var(--uui-primary-50); }
 .pc-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pc-desc { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .pc-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 12px 0; border-top: 1px solid var(--uui-divider); border-bottom: 1px solid var(--uui-divider); }
@@ -123,10 +134,10 @@ a:hover { text-decoration: underline; }
 .twisty { width: 24px; border: 0; background: none; cursor: pointer; font-size: 16px; color: var(--uui-text-secondary); }
 .twisty:disabled { cursor: default; }
 .lvl { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 3px; white-space: nowrap; min-width: 92px; text-align: center; }
-.lvl.lv0 { background: #303240; color: #fff; }
-.lvl.lv1 { background: #0E77D3; color: #fff; }
-.lvl.lv2 { background: #E1F0FB; color: #0B5FA0; }
-.tree-id { border: 0; background: none; font-weight: 600; color: var(--uui-primary-50, #0E77D3); cursor: pointer; padding: 0; white-space: nowrap; font-size: 14px; }
+.lvl.lv0 { background: var(--night800, #303240); color: var(--white); }
+.lvl.lv1 { background: var(--violet-60); color: var(--white); }
+.lvl.lv2 { background: var(--violet-5); color: var(--violet-70); border: 1px solid var(--violet-10); }
+.tree-id { border: 0; background: none; font-weight: 600; color: var(--uui-primary-60); cursor: pointer; padding: 0; white-space: nowrap; font-size: 14px; }
 .tree-id:hover { text-decoration: underline; }
 .tree-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
 .also { font-size: 12px; color: var(--uui-text-secondary); white-space: nowrap; }
@@ -140,10 +151,10 @@ a:hover { text-decoration: underline; }
 .links-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 .links-grid > div { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .trace-chip { border: 1px solid var(--uui-control-border, #CDD1E0); background: var(--uui-surface-main, #fff); border-radius: 14px; padding: 3px 12px; font-size: 13px; cursor: pointer; color: var(--uui-text-primary); }
-.trace-chip:hover { border-color: var(--uui-primary-50, #0E77D3); }
+.trace-chip:hover { border-color: var(--uui-primary-50); }
 .att-row { padding: 6px 0; border-bottom: 1px solid var(--uui-divider); }
 .att-kind { font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 3px; }
-.att-kind.file { background: #E1F0FB; color: #0B5FA0; }
+.att-kind.file { background: var(--violet-5); color: var(--violet-70); }
 .att-kind.link { background: #EDFAF0; color: #2E8040; }
 .att-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
 .att-meta { white-space: nowrap; }

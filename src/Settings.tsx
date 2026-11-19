@@ -195,7 +195,7 @@ function CustomFields(p: { list: CustomField[]; ro: boolean; onChange: (l: Custo
           </FlexRow>
         </div>
       ))}
-      {!p.ro && <div><Button color="accent" caption="+ Custom field" onClick={() => p.onChange([...p.list, { key: newCustomKey(), label: 'New field', type: 'text', options: [], required: false, inTable: false }])} /></div>}
+      {!p.ro && <div><Button color="primary" caption="+ Custom field" onClick={() => p.onChange([...p.list, { key: newCustomKey(), label: 'New field', type: 'text', options: [], required: false, inTable: false }])} /></div>}
     </>
   )
 }

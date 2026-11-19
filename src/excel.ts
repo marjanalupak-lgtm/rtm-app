@@ -19,7 +19,7 @@ export async function exportExcel(rows: Req[], name = 'RTM', cfg: Config = defau
   cols.push({ label: 'Attachments & links', get: r => (r.attachments ?? []).map(x => `${x.name}: ${x.url}`).join('\n'), wide: true })
   ws.addRow(cols.map(c => c.label))
   ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }
-  ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F3A5F' } }
+  ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF40109E' } }
   for (const r of rows) ws.addRow(cols.map(c => c.get(r)))
   ws.columns.forEach((c, i) => { c.width = cols[i]?.wide ? 60 : 22 })
   ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: cols.length } }
