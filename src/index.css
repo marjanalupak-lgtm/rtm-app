@@ -202,3 +202,12 @@ a:hover { text-decoration: underline; }
 .fchip-x { font-size: 18px; line-height: 1; padding: 0 4px; color: var(--uui-text-secondary); }
 .fadd { width: 150px; }
 @media (max-width: 700px) { .fchip { width: 100%; } .fchip-input { flex: 1; width: auto; } .fadd { width: 100%; } }
+
+/* Column header filter */
+.hfilter { width: 280px; padding: 12px; display: flex; flex-direction: column; gap: 8px; background: var(--uui-surface-main, #fff); }
+.hfilter-list { max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.hfilter-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 2px; border-radius: 4px; }
+.hfilter-item:hover { background: var(--uui-neutral-5, #F5F6FA); }
+.hfilter-item .uui-checkbox-container { min-width: 0; }
+.hfilter-count { font-size: 12px; color: var(--uui-text-secondary); font-variant-numeric: tabular-nums; }
+.hfilter-foot { display: flex; align-items: center; gap: 12px; border-top: 1px solid var(--uui-divider); padding-top: 8px; }

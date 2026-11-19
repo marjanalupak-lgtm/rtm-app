@@ -5,6 +5,7 @@ import { FIELDS, type Req } from './model'
 import { useConfig, getVal, type Config } from './config'
 import { check } from './rules'
 import { CheckBadge, StatusBadge, LinkText } from './ui'
+import { HeaderFilter, isFilterable, type FilterCtx } from './Filters'
 
 type Row = Req & { check: string }
 const BADGE = new Set(['status', 'priority', 'delivery', 'design_status', 'test_exec', 'test_case_status'])
@@ -23,14 +24,22 @@ export const SHORT: Record<string, string> = {
   dependency: 'Depends on', date_added: 'Added', spec_link: 'Spec', acceptance: 'Acceptance', design_link: 'Design link', notes: 'Notes',
 }
 const WIDTH: Record<string, number> = {
-  id: 104, statement: 380, check: 196, type: 132, status: 148, priority: 112, release: 148, owner: 136, delivery: 148,
-  parent: 156, source: 156, category: 150, epic_title: 156, story_id: 132, design_required: 108, design_status: 156,
-  test_case: 136, test_case_status: 136, test_exec: 124, defect: 124, date_added: 116, notes: 220,
+  id: 104, statement: 380, check: 204, type: 144, status: 160, priority: 132, release: 160, owner: 152, delivery: 160,
+  parent: 168, source: 168, category: 160, epic_id: 136, epic_title: 168, story_id: 140, design_required: 128, design_status: 172,
+  design_owner: 150, test_case: 148, test_case_status: 152, test_exec: 140, defect: 136, dependency: 150, date_added: 128, notes: 220,
+}
+
+function headerFilter(key: string, cfg: Config, fctx?: FilterCtx): Partial<DataColumnProps<Row, string>> {
+  if (!fctx || !isFilterable(key, cfg)) return {}
+  return {
+    renderFilter: (_lens, dropdown) => <HeaderFilter field={key} ctx={fctx} close={() => dropdown.onClose?.()} />,
+    isFilterActive: () => !!fctx.st.values[key]?.length,
+  }
 }
 
 const Cell = ({ v, strong }: { v: string; strong?: boolean }) => <div className={'cell-clamp' + (strong ? ' strong' : '')} title={v.length > 40 ? v : undefined}>{v}</div>
 
-export function columns(cfg: Config): DataColumnProps<Row, string>[] {
+export function columns(cfg: Config, fctx?: FilterCtx): DataColumnProps<Row, string>[] {
   const defaults = Object.fromEntries(FIELDS.map(f => [f.key, f.label]))
   const shown = new Map<string, DataColumnProps<Row, string>>()
   const add = (key: string, full: string, kind: 'text' | 'badge' | 'link' | 'check', renamed: boolean, hidden: boolean) => {
@@ -39,6 +48,7 @@ export function columns(cfg: Config): DataColumnProps<Row, string>[] {
       key, caption: <span title={full}>{label}</span>, width: WIDTH[key] ?? 150, grow: key === 'statement' ? 1 : 0,
       minWidth: key === 'statement' ? 260 : 80, isSortable: kind !== 'link', fix: key === 'id' ? 'left' : undefined, alignSelf: 'center',
       isAlwaysVisible: key === 'id' || key === 'statement', isHiddenByDefault: hidden,
+      ...headerFilter(key, cfg, fctx),
       render: r => {
         if (kind === 'check') return <CheckBadge check={r.check} />
         const v = getVal(r, key)
@@ -58,6 +68,7 @@ export function columns(cfg: Config): DataColumnProps<Row, string>[] {
   for (const c of cfg.custom) {
     ordered.push({
       key: c.key, caption: <span title={c.label}>{c.label}</span>, width: c.type === 'long' ? 220 : 150, isSortable: c.type !== 'link', alignSelf: 'center', isHiddenByDefault: !c.inTable,
+      ...headerFilter(c.key, cfg, fctx),
       render: r => c.type === 'link' ? <div className="cell-clamp"><LinkText value={getVal(r, c.key)} /></div> : <Cell v={getVal(r, c.key)} />,
     })
   }
@@ -81,10 +92,10 @@ export function useTableState(projectId: string): [DataTableState, SetTable] {
   return [state, set]
 }
 
-export function RtmTable({ rows, onOpen, state, setState }: { rows: Req[]; onOpen: (r: Req) => void; state: DataTableState; setState: SetTable }) {
+export function RtmTable({ rows, onOpen, state, setState, fctx }: { rows: Req[]; onOpen: (r: Req) => void; state: DataTableState; setState: SetTable; fctx?: FilterCtx }) {
   const cfg = useConfig()
   const items = useMemo<Row[]>(() => rows.map(r => ({ ...r, ...Object.fromEntries(cfg.custom.map(c => [c.key, getVal(r, c.key)])), check: check(r, cfg) })), [rows, cfg])
-  const cols = useMemo(() => columns(cfg), [cfg])
+  const cols = useMemo(() => columns(cfg, fctx), [cfg, fctx])
   const ds = useArrayDataSource<Row, string, unknown>({ items, getId: r => r.id }, [items])
   const view = ds.useView(state, setState as never, { getRowOptions: r => ({ onClick: () => onOpen(r) }) })
   if (!rows.length) {

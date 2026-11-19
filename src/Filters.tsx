@@ -1,7 +1,7 @@
 // Filter bar: quick filters (Type, Status, Priority, Traceability) plus "+ Filter" for any other field.
 // Options are the values that actually occur in the project; "(empty)" matches blank cells.
-import type { ReactNode } from 'react'
-import { Button, FlexSpacer, IconButton, Text } from '@epam/uui'
+import { useState, type ReactNode } from 'react'
+import { Button, Checkbox, FlexSpacer, IconButton, LinkButton, SearchInput, Text } from '@epam/uui'
 import { FIELDS, type Req } from './model'
 import { getVal, type Config } from './config'
 import { check } from './rules'
@@ -29,7 +29,7 @@ export function applyFilters(rows: Req[], st: FilterState, cfg: Config): Req[] {
   return rows.filter(r => active.every(([k, vals]) => vals.includes(valueOf(r, k, cfg) || EMPTY)))
 }
 
-function optionsFor(rows: Req[], key: string, cfg: Config): string[] {
+export function optionsFor(rows: Req[], key: string, cfg: Config): string[] {
   const seen = new Set(rows.map(r => valueOf(r, key, cfg) || EMPTY))
   const f = FIELDS.find(x => x.key === key)
   const listOrder: string[] = f?.list ? cfg.lists[f.list] : key === 'release' ? cfg.lists.release : cfg.custom.find(c => c.key === key)?.options ?? []
@@ -60,9 +60,43 @@ export function FilterBar({ rows, cfg, st, onChange, right }: { rows: Req[]; cfg
       {addable.length > 0 && (
         <div className="fadd"><Select value="" options={addable.map(f => f.key)} labels={Object.fromEntries(addable.map(f => [f.key, f.label]))} onChange={k => k && onChange({ ...st, fields: [...st.fields, k] })} placeholder="+ Filter" /></div>
       )}
-      {changed && <Button size="30" fill="none" color="secondary" caption="Clear filters" onClick={() => onChange(emptyFilters())} />}
-      {anyValue && <Text fontSize="12" color="secondary">Also applies to Dashboard and Excel export.</Text>}
+      {changed && <Button size="30" fill="none" color="secondary" caption="Clear filters" onClick={() => onChange(emptyFilters())} rawProps={{ title: 'Filters also apply to the Dashboard and the Excel export' }} />}
       {right && <><FlexSpacer />{right}</>}
+    </div>
+  )
+}
+
+// Filter shown in a column header dropdown. Shares state with the filter bar.
+export type FilterCtx = { rows: Req[]; cfg: Config; st: FilterState; onChange: (s: FilterState) => void }
+export const isFilterable = (key: string, cfg: Config) => filterableFields(cfg).some(f => f.key === key)
+
+export function HeaderFilter({ field, ctx, close }: { field: string; ctx: FilterCtx; close?: () => void }) {
+  const { rows, cfg, st, onChange } = ctx
+  const [q, setQ] = useState('')
+  const opts = optionsFor(rows, field, cfg)
+  const counts = new Map<string, number>()
+  for (const r of rows) { const v = valueOf(r, field, cfg) || EMPTY; counts.set(v, (counts.get(v) ?? 0) + 1) }
+  const sel = st.values[field] ?? []
+  const set = (vals: string[]) => onChange({ fields: st.fields.includes(field) ? st.fields : [...st.fields, field], values: { ...st.values, [field]: vals } })
+  const toggle = (v: string) => set(sel.includes(v) ? sel.filter(x => x !== v) : [...sel, v])
+  const shown = opts.filter(v => !q || v.toLowerCase().includes(q.toLowerCase()))
+  return (
+    <div className="hfilter" onClick={e => e.stopPropagation()}>
+      {opts.length > 8 && <SearchInput size="30" value={q} onValueChange={v => setQ(v ?? '')} placeholder="Search values" />}
+      <div className="hfilter-list">
+        {shown.map(v => (
+          <div key={v} className="hfilter-item">
+            <Checkbox label={v} value={sel.includes(v)} onValueChange={() => toggle(v)} />
+            <span className="hfilter-count">{counts.get(v) ?? 0}</span>
+          </div>
+        ))}
+        {!shown.length && <Text fontSize="14" color="secondary">No values</Text>}
+      </div>
+      <div className="hfilter-foot">
+        <LinkButton size="30" caption="Select all" onClick={() => set(opts)} />
+        <LinkButton size="30" caption="Clear" isDisabled={!sel.length} onClick={() => set([])} />
+        {close && <><FlexSpacer /><Button size="24" color="primary" caption="Done" onClick={close} /></>}
+      </div>
     </div>
   )
 }

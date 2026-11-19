@@ -112,6 +112,7 @@ function Main({ email }: { email: string }) {
   }, [rows, q, filters, cfg])
 
   // Column chooser (UUI columns configuration modal): show/hide, reorder, pin.
+  const fctx = useMemo(() => ({ rows, cfg, st: filters, onChange: setFilters }), [rows, cfg, filters]) // eslint-disable-line react-hooks/exhaustive-deps
   const allCols = useMemo(() => tableColumns(cfg), [cfg])
   const { config: colConfig, defaultConfig: colDefaults } = useColumnsConfig(allCols, tableState.columnsConfig ?? {})
   const hiddenCols = Object.values(colConfig).filter(c => !c.isVisible).length
@@ -163,7 +164,7 @@ function Main({ email }: { email: string }) {
         {activeTab === 'projects' && projects && <ProjectsTab projects={projects} currentId={pid} onOpen={id => { setPid(id); setTab('rtm') }} onEdit={setEditProject} onChanged={loadProjects} notify={notify}
           onOpenShared={() => store.openSharedProject().then(async id => { if (id) { await loadProjects(); setPid(id); setTab('rtm'); notify('Shared project opened') } }).catch(e => notify(e.message, false))} />}
         {activeTab === 'dashboard' && <Dashboard rows={filtered} onOpen={open} />}
-        {activeTab === 'rtm' && <RtmTable rows={filtered} onOpen={open} state={tableState} setState={setTableState} />}
+        {activeTab === 'rtm' && <RtmTable rows={filtered} onOpen={open} state={tableState} setState={setTableState} fctx={fctx} />}
         {activeTab === 'tree' && <TreeView rows={rows} onOpen={open} q={q} />}
         {activeTab === 'settings' && project && <Settings projectId={pid} config={cfg} isOwner={!!project.isOwner} onSaved={loadProjects} notify={notify} />}
         {activeTab === 'guide' && <Guide />}
