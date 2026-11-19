@@ -96,8 +96,8 @@ export function ProjectEditor(p: {
   const owners = members.filter(m => m.role === 'owner').length
 
   return (
-    <div className="drawer-wrap" onClick={p.onClose}>
-      <Panel background="surface-main" shadow cx="drawer drawer-narrow" onClick={e => e.stopPropagation()}>
+    <div className="drawer-wrap" onMouseDown={e => { if (e.target === e.currentTarget) p.onClose() }}>
+      <Panel background="surface-main" shadow cx="drawer drawer-narrow">
         <FlexRow padding="24" vPadding="18" borderBottom columnGap="12">
           <Text fontSize="18" fontWeight="600">{isNew ? 'New project' : pr.name}</Text>
           <FlexSpacer />

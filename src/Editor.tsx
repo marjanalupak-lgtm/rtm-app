@@ -47,8 +47,8 @@ export function Editor(p: {
   }
 
   return (
-    <div className="drawer-wrap" onClick={p.onClose}>
-      <Panel background="surface-main" shadow cx="drawer" onClick={e => e.stopPropagation()}>
+    <div className="drawer-wrap" onMouseDown={e => { if (e.target === e.currentTarget) p.onClose() }}>
+      <Panel background="surface-main" shadow cx="drawer">
         <FlexRow padding="24" vPadding="18" borderBottom columnGap="12">
           <Text fontSize="18" fontWeight="600">{p.isNew ? 'New requirement' : r.id}</Text>
           <CheckBadge check={check} />
