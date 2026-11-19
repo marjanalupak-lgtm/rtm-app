@@ -22,9 +22,13 @@ describe('table views', () => {
   })
   it('built-ins can be overridden; custom views follow', () => {
     const override = configFromKeys(ALL, ['id', 'statement'])
-    const v = allViews({ custom: [{ id: 'v_1', name: 'Mine', columns: override }], overrides: { testing: override }, active: 'default' }, ALL)
+    const v = allViews({ custom: [{ id: 'v_1', name: 'Mine', columns: override }], overrides: { testing: override }, active: 'default', removed: [] }, ALL)
     expect(v.map(x => x.name)).toEqual([...PRESETS.map(p => p.name), 'Mine'])
     expect(v.find(x => x.id === 'testing')!.columns).toBe(override)
     expect(v.find(x => x.id === 'default')!.columns).toBeUndefined()
+  })
+  it('deleted built-ins are hidden, Default always stays', () => {
+    const v = allViews({ custom: [], overrides: {}, active: 'default', removed: ['design', 'default'] }, ALL)
+    expect(v.map(x => x.id)).toEqual(['default', 'testing', 'delivery'])
   })
 })

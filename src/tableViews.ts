@@ -3,7 +3,7 @@
 import { indexToOrder, type ColumnsConfig } from '@epam/uui-core'
 
 export type TableView = { id: string; name: string; builtIn?: boolean; columns?: ColumnsConfig }
-type Stored = { custom: TableView[]; overrides: Record<string, ColumnsConfig>; active: string }
+type Stored = { custom: TableView[]; overrides: Record<string, ColumnsConfig>; active: string; removed: string[] }
 
 // Built-in starting points. Default = whatever Settings › Fields › "In table" says.
 export const PRESETS: { id: string; name: string; keys: string[] | null }[] = [
@@ -42,8 +42,8 @@ const key = (pid: string) => 'rtm.views.' + pid
 export function loadViews(pid: string): Stored {
   try {
     const s = JSON.parse(localStorage.getItem(key(pid)) ?? '')
-    return { custom: s.custom ?? [], overrides: s.overrides ?? {}, active: s.active ?? 'default' }
-  } catch { return { custom: [], overrides: {}, active: 'default' } }
+    return { custom: s.custom ?? [], overrides: s.overrides ?? {}, active: s.active ?? 'default', removed: s.removed ?? [] }
+  } catch { return { custom: [], overrides: {}, active: 'default', removed: [] } }
 }
 export function saveViews(pid: string, s: Stored) {
   try { localStorage.setItem(key(pid), JSON.stringify(s)) } catch { /* ignore */ }
@@ -51,7 +51,7 @@ export function saveViews(pid: string, s: Stored) {
 
 // All views for the menu: built-ins (possibly updated by the user) + custom ones.
 export function allViews(s: Stored, allKeys: string[], base: ColumnsConfig = {}): TableView[] {
-  const built = PRESETS.map(p => ({
+  const built = PRESETS.filter(p => p.id === 'default' || !s.removed?.includes(p.id)).map(p => ({
     id: p.id, name: p.name, builtIn: true,
     columns: s.overrides[p.id] ?? (p.keys ? configFromKeys(allKeys, p.keys, base) : undefined),
   }))

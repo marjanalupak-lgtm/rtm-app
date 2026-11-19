@@ -237,3 +237,10 @@ body.resizing { cursor: col-resize; user-select: none; }
 .reauth .login { min-height: 100vh; background: rgba(24, 12, 48, .72); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
 .reauth .login-glow { display: none; }
 .reauth .login-card { background: linear-gradient(150deg, rgba(59, 29, 107, .92), rgba(15, 77, 58, .92)); }
+
+/* Table views menu: scrolls when there are many views; × deletes a view. */
+.vm-list { max-height: 320px; overflow-y: auto; }
+.vm-row { display: flex; align-items: center; padding-right: 8px; }
+.vm-row .vm-item { flex: 1; min-width: 0; }
+.vm-row .vm-del { opacity: .45; }
+.vm-row:hover .vm-del, .vm-row .vm-del:focus-visible { opacity: 1; }

@@ -1,7 +1,7 @@
 // "View: …" menu next to Columns: switch between saved table views, save / update / rename / delete.
 import { useEffect, useState } from 'react'
 import { useUuiContext, type ColumnsConfig, type IModal } from '@epam/uui-core'
-import { Button, Dropdown, DropdownMenuBody, DropdownMenuButton, DropdownMenuHeader, DropdownMenuSplitter, FlexRow, FlexSpacer, LabeledInput, ModalBlocker, ModalFooter, ModalHeader, ModalWindow, TextInput } from '@epam/uui'
+import { Button, Dropdown, DropdownMenuBody, DropdownMenuButton, DropdownMenuHeader, DropdownMenuSplitter, FlexRow, IconButton, FlexSpacer, LabeledInput, ModalBlocker, ModalFooter, ModalHeader, ModalWindow, TextInput } from '@epam/uui'
 import { allViews, loadViews, newViewId, sameColumns, saveViews, PRESETS, type TableView } from './tableViews'
 
 function NameModal(p: IModal<string> & { title: string; initial: string; taken: string[] }) {
@@ -58,11 +58,17 @@ export function ViewMenu({ pid, allKeys, current, defaults, apply, notify }: {
   const rename = () => ask('Rename view', active.name).then(name => {
     persist({ ...st, custom: st.custom.map(v => v.id === active.id ? { ...v, name } : v) })
   }).catch(() => {})
-  const remove = () => {
-    if (!confirm(`Delete view “${active.name}”? Your data is not affected.`)) return
-    persist({ ...st, custom: st.custom.filter(v => v.id !== active.id), active: 'default' })
-    apply(undefined)
+  // Delete any view except Default. Built-in ones can be brought back with "Restore built-in views".
+  const remove = (v: TableView) => {
+    if (!confirm(`Delete view “${v.name}”? Your data is not affected.`)) return
+    const overrides = { ...st.overrides }; delete overrides[v.id]
+    const s = v.builtIn
+      ? { ...st, overrides, removed: [...st.removed, v.id] }
+      : { ...st, custom: st.custom.filter(x => x.id !== v.id) }
+    persist(v.id === active.id ? { ...s, active: 'default' } : s)
+    if (v.id === active.id) apply(undefined)
   }
+  const restore = () => persist({ ...st, removed: [] })
   const resetBuiltIn = () => {
     const overrides = { ...st.overrides }; delete overrides[active.id]
     const s = { ...st, overrides }; persist(s)
@@ -79,19 +85,27 @@ export function ViewMenu({ pid, allKeys, current, defaults, apply, notify }: {
       renderBody={props => (
         <DropdownMenuBody {...props} minWidth={260}>
           <DropdownMenuHeader caption="Table views" />
-          {views.map(v => (
-            <DropdownMenuButton key={v.id} caption={v.name + (v.builtIn && st.overrides[v.id] ? ' (edited)' : '')} isSelected={v.id === active.id}
-              onClick={() => { switchTo(v); props.onClose?.() }} />
-          ))}
+          <div className="vm-list">
+            {views.map(v => (
+              <div key={v.id} className="vm-row">
+                <DropdownMenuButton cx="vm-item" caption={v.name + (v.builtIn && st.overrides[v.id] ? ' (edited)' : '')} isSelected={v.id === active.id}
+                  onClick={() => { switchTo(v); props.onClose?.() }} />
+                {v.id !== 'default' && (
+                  <IconButton cx="vm-del" icon={() => <span className="fchip-x" aria-hidden>×</span>} onClick={() => remove(v)}
+                    rawProps={{ 'aria-label': `Delete view ${v.name}`, title: `Delete view “${v.name}”` }} />
+                )}
+              </div>
+            ))}
+          </div>
           <DropdownMenuSplitter />
           {modified && <DropdownMenuButton caption={`Update “${active.name}” with current columns`} onClick={() => { update(); props.onClose?.() }} />}
           {modified && <DropdownMenuButton caption="Discard column changes" onClick={() => { revert(); props.onClose?.() }} />}
           <DropdownMenuButton caption="Save current columns as new view…" onClick={() => { props.onClose?.(); saveAsNew() }} />
           {!active.builtIn && <DropdownMenuButton caption={`Rename “${active.name}”…`} onClick={() => { props.onClose?.(); rename() }} />}
-          {!active.builtIn && <DropdownMenuButton caption={`Delete “${active.name}”`} onClick={() => { props.onClose?.(); remove() }} />}
           {active.builtIn && st.overrides[active.id] && PRESETS.some(p => p.id === active.id) && (
             <DropdownMenuButton caption={`Reset “${active.name}” to original`} onClick={() => { resetBuiltIn(); props.onClose?.() }} />
           )}
+          {st.removed.length > 0 && <DropdownMenuButton caption="Restore built-in views" onClick={() => { restore(); props.onClose?.() }} />}
         </DropdownMenuBody>
       )}
     />
