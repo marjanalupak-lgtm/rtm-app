@@ -14,7 +14,6 @@ import { Editor } from './Editor'
 import { MultiSelect, Select } from './ui'
 import { ProjectsTab, ProjectEditor } from './Projects'
 import type { Project } from './store'
-import { TreeLogo } from './Logo'
 
 type Tab = 'projects' | 'dashboard' | 'rtm' | 'tree' | 'settings' | 'guide'
 const TABS: [Tab, string][] = [['projects', 'Projects'], ['dashboard', 'Dashboard'], ['rtm', 'RTM'], ['tree', 'Tree'], ['settings', 'Settings'], ['guide', 'Guide & rules']]
@@ -37,7 +36,6 @@ function Login({ reason }: { reason?: string }) {
     <div className="login">
       <div className="login-glow g1" /><div className="login-glow g2" />
       <main className="login-card">
-        <div className="login-logo"><TreeLogo size={76} /></div>
         <h1 className="login-title">RTM tree</h1>
         <p className="login-tagline">Every request has a root.</p>
         <p className="login-lead">Trace every requirement from the business need it grows from to the design, test and defect it ends in — for any project.</p>
@@ -133,7 +131,7 @@ function Main({ email }: { email: string }) {
     <ConfigContext.Provider value={cfg}>
     <div className="app">
       <header className="topbar">
-        <div className="brand"><TreeLogo size={30} /><span>RTM tree</span></div>
+        <div className="brand">RTM tree</div>
         {liveProjects.length > 0 && (
           <div className="project-pick"><Select value={pid} options={liveProjects.map(p => p.id)} labels={Object.fromEntries(liveProjects.map(p => [p.id, p.name]))} onChange={v => { setPid(v); if (activeTab === 'projects') setTab('rtm') }} placeholder="Select project" noClear /></div>
         )}
