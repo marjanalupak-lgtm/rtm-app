@@ -20,23 +20,29 @@ function coverage(rows: Req[], cfg = normalize(undefined)) {
 
 export function ProjectsTab(p: {
   projects: Project[]; currentId: string; onOpen: (id: string) => void; onEdit: (pr: Project) => void
+  onChanged: () => void; notify: (m: string, ok?: boolean) => void
 }) {
   const [stats, setStats] = useState<Record<string, Req[]>>({})
   const [showClosed, setShowClosed] = useState(false)
+  const [showTrash, setShowTrash] = useState(false)
+  const [purging, setPurging] = useState<Project | null>(null)
   useEffect(() => { store.projectStats().then(setStats).catch(() => {}) }, [p.projects])
-  const list = p.projects.filter(x => showClosed || x.status !== 'Closed')
-  const closed = p.projects.length - p.projects.filter(x => x.status !== 'Closed').length
+  const active = p.projects.filter(x => !x.deleted_at)
+  const trash = p.projects.filter(x => x.deleted_at)
+  const list = active.filter(x => showClosed || x.status !== 'Closed')
+  const closed = active.filter(x => x.status === 'Closed').length
 
   return (
     <div className="dash">
       <FlexRow columnGap="12" cx="toolbar">
         <Text fontSize="18" fontWeight="600">Projects</Text>
-        <Text color="secondary">{p.projects.length} total</Text>
+        <Text color="secondary">{active.length} total</Text>
         <FlexSpacer />
         {closed > 0 && <Button fill="none" color="secondary" caption={showClosed ? 'Hide closed' : `Show closed (${closed})`} onClick={() => setShowClosed(s => !s)} />}
+        {trash.length > 0 && <Button fill="none" color="secondary" caption={showTrash ? 'Hide trash' : `Trash (${trash.length})`} onClick={() => setShowTrash(s => !s)} />}
         <Button color="accent" caption="+ Project" onClick={() => p.onEdit(emptyProject())} />
       </FlexRow>
-      {!p.projects.length && (
+      {!active.length && (
         <Panel background="surface-main" shadow cx="empty">
           <Text fontSize="16" fontWeight="600">Create your first project</Text>
           <Text color="secondary">One project = one RTM (e.g. one client, product or study). Requirement IDs are numbered per project.</Text>
@@ -61,12 +67,55 @@ export function ProjectsTab(p: {
               </div>
               <FlexRow columnGap="12">
                 <Button color="primary" caption={pr.id === p.currentId ? 'Opened' : 'Open RTM'} onClick={() => p.onOpen(pr.id)} />
-                <Button fill="outline" color="secondary" caption="Settings" onClick={() => p.onEdit(pr)} />
+                <Button fill="outline" color="secondary" caption="Details & members" onClick={() => p.onEdit(pr)} />
               </FlexRow>
             </Panel>
           )
         })}
       </div>
+
+      {showTrash && trash.length > 0 && (
+        <Panel background="surface-main" shadow cx="card">
+          <Text fontSize="16" fontWeight="600">Trash</Text>
+          <Text fontSize="14" color="secondary">Projects here keep all their requirements and history. Restore them any time.</Text>
+          {trash.map(pr => (
+            <FlexRow key={pr.id} columnGap="12" cx="trash-row">
+              <div className="grow">
+                <Text fontWeight="600">{pr.name}</Text>
+                <Text fontSize="12" color="secondary">{(stats[pr.id] ?? []).length} requirements · moved to trash {pr.deleted_at ? new Date(pr.deleted_at).toLocaleString() : ''}{pr.deleted_by ? ' by ' + pr.deleted_by : ''}</Text>
+              </div>
+              <Button color="primary" caption="Restore" onClick={() => store.restoreProject(pr.id).then(() => { p.onChanged(); p.notify(`"${pr.name}" restored`) }).catch(e => p.notify(e.message, false))} />
+              <Button color="critical" fill="none" caption="Delete forever…" onClick={() => setPurging(pr)} />
+            </FlexRow>
+          ))}
+        </Panel>
+      )}
+      {purging && <PurgeDialog project={purging} count={(stats[purging.id] ?? []).length} onClose={() => setPurging(null)}
+        onDone={() => { setPurging(null); p.onChanged(); p.notify(`"${purging.name}" deleted forever`) }} />}
+    </div>
+  )
+}
+
+// Permanent delete: user must type the exact project name.
+function PurgeDialog(p: { project: Project; count: number; onClose: () => void; onDone: () => void }) {
+  const [typed, setTyped] = useState('')
+  const [err, setErr] = useState('')
+  const ok = typed.trim() === p.project.name.trim()
+  return (
+    <div className="drawer-wrap center" onMouseDown={e => { if (e.target === e.currentTarget) p.onClose() }}>
+      <Panel background="surface-main" shadow cx="dialog">
+        <Text fontSize="18" fontWeight="600">Delete “{p.project.name}” forever?</Text>
+        <WarningAlert>This permanently deletes the project, its {p.count} requirements and their full history. It cannot be undone and there is no backup.</WarningAlert>
+        <LabeledInput label={`Type the project name to confirm: ${p.project.name}`}>
+          <TextInput value={typed} onValueChange={v => setTyped(v ?? '')} placeholder={p.project.name} />
+        </LabeledInput>
+        {err && <Text color="critical">{err}</Text>}
+        <FlexRow columnGap="12">
+          <FlexSpacer />
+          <Button fill="outline" color="secondary" caption="Cancel" onClick={p.onClose} />
+          <Button color="critical" caption="Delete forever" isDisabled={!ok} onClick={() => store.purgeProject(p.project.id).then(p.onDone).catch(e => setErr(e.message))} />
+        </FlexRow>
+      </Panel>
     </div>
   )
 }
@@ -140,8 +189,8 @@ export function ProjectEditor(p: {
           )}
         </div>
         <FlexRow padding="24" vPadding="12" columnGap="12" cx="drawer-foot">
-          {!isNew && amOwner && <Button color="critical" fill="outline" caption="Delete project" onClick={() => {
-            if (confirm(`Delete "${pr.name}" and ALL its requirements and history? This cannot be undone.`)) store.deleteProject(pr.id).then(p.onDeleted).catch(e => setErr(e.message))
+          {!isNew && amOwner && <Button color="critical" fill="none" caption="Move to trash" onClick={() => {
+            if (confirm(`Move "${pr.name}" to trash? Its requirements are kept and you can restore it from Projects → Trash.`)) store.trashProject(pr.id).then(p.onDeleted).catch(e => setErr(e.message))
           }} />}
           <FlexSpacer />
           <Button fill="outline" color="secondary" caption="Cancel" onClick={p.onClose} />

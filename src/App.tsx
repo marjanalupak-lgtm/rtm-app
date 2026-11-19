@@ -74,10 +74,12 @@ function Main({ email }: { email: string }) {
 
   const loadProjects = useCallback(() => store.listProjects().then(ps => {
     setProjects(ps)
-    setPid(cur => ps.some(p => p.id === cur) ? cur : (ps.find(p => p.status !== 'Closed') ?? ps[0])?.id ?? '')
+    const live = ps.filter(p => !p.deleted_at)
+    setPid(cur => live.some(p => p.id === cur) ? cur : (live.find(p => p.status !== 'Closed') ?? live[0])?.id ?? '')
   }).catch(e => notify('Load failed: ' + e.message, false)), [notify])
   useEffect(() => { loadProjects() }, [loadProjects])
-  const project = projects?.find(p => p.id === pid)
+  const project = projects?.find(p => p.id === pid && !p.deleted_at)
+  const liveProjects = useMemo(() => (projects ?? []).filter(p => !p.deleted_at), [projects])
   const cfg = useMemo(() => project?.config ?? defaultConfig(), [project])
   useEffect(() => { store.setLabels(k => fieldLabel(cfg, k)) }, [cfg])
 
@@ -122,8 +124,8 @@ function Main({ email }: { email: string }) {
     <div className="app">
       <header className="topbar">
         <div className="brand">RTM</div>
-        {projects && projects.length > 0 && (
-          <div className="project-pick"><Select value={pid} options={projects.map(p => p.id)} labels={Object.fromEntries(projects.map(p => [p.id, p.name]))} onChange={v => { setPid(v); if (activeTab === 'projects') setTab('rtm') }} placeholder="Select project" noClear /></div>
+        {liveProjects.length > 0 && (
+          <div className="project-pick"><Select value={pid} options={liveProjects.map(p => p.id)} labels={Object.fromEntries(liveProjects.map(p => [p.id, p.name]))} onChange={v => { setPid(v); if (activeTab === 'projects') setTab('rtm') }} placeholder="Select project" noClear /></div>
         )}
         {TABS.map(([k, c]) => <TabButton key={k} caption={c} isActive={activeTab === k} isDisabled={k !== 'projects' && k !== 'guide' && !project} onClick={() => setTab(k)} size="60" cx="toptab" />)}
         <FlexSpacer />
@@ -150,7 +152,7 @@ function Main({ email }: { email: string }) {
             <input ref={fileRef} type="file" accept=".xlsx,.xlsm" hidden onChange={e => { const f = e.target.files?.[0]; if (f) onImport(f); e.target.value = '' }} />
           </FlexRow>
         )}
-        {activeTab === 'projects' && projects && <ProjectsTab projects={projects} currentId={pid} onOpen={id => { setPid(id); setTab('rtm') }} onEdit={setEditProject} />}
+        {activeTab === 'projects' && projects && <ProjectsTab projects={projects} currentId={pid} onOpen={id => { setPid(id); setTab('rtm') }} onEdit={setEditProject} onChanged={loadProjects} notify={notify} />}
         {activeTab === 'dashboard' && <Dashboard rows={filtered} onOpen={open} />}
         {activeTab === 'rtm' && <RtmTable rows={filtered} onOpen={open} />}
         {activeTab === 'settings' && project && <Settings projectId={pid} config={cfg} me={email} onSaved={loadProjects} notify={notify} />}
@@ -172,7 +174,7 @@ function Main({ email }: { email: string }) {
       {editProject && (
         <ProjectEditor initial={editProject} me={email} onClose={() => setEditProject(null)}
           onSaved={async pr => { setEditProject(null); await loadProjects(); if (!editProject.id) { setPid(pr.id); setTab('rtm') } notify(`Project "${pr.name}" saved`) }}
-          onDeleted={async () => { setEditProject(null); await loadProjects(); notify('Project deleted') }} />
+          onDeleted={async () => { setEditProject(null); await loadProjects(); notify('Moved to trash — restore it from Projects → Trash') }} />
       )}
     </div>
     </ConfigContext.Provider>

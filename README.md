@@ -4,6 +4,7 @@ Web app for a team RTM. Built on the RTM.xlsm template: same 28 fields, dropdown
 status rules and the **Traceability Check** formula. UI: EPAM UUI (Loveship).
 
 ## What it does
+- **Trash**: deleting a project moves it to trash (restorable, data kept). Permanent delete only from trash, after typing the project name; the database refuses to hard-delete projects not in trash.
 - **Projects**: one RTM per project/client. Only project members see it (owners manage settings + members).
 - **Settings (per project, owners edit)**: ID prefix/digits, every dropdown list, field labels/visibility/required/table columns, custom fields, traceability rules on/off, status workflow matrix.
 - **RTM table**: search, filters (status, release, traceability), sorting, click a row to edit.
@@ -23,7 +24,7 @@ Without Supabase keys it runs in **local demo mode** (data stays in your browser
 
 ## Team setup (once)
 1. Create a free project at supabase.com.
-2. SQL Editor → run `supabase/schema.sql`, then `002_projects.sql`, then `003_config.sql`.
+2. SQL Editor → run `supabase/schema.sql`, then `002_projects.sql`, then `003_config.sql`, then `004_trash.sql`.
 3. Authentication → URL Configuration → add your GitHub Pages URL to Redirect URLs.
 4. Project Settings → API → copy `Project URL` and `anon public` key.
 5. Local: copy `.env.example` to `.env.local` and fill both values.

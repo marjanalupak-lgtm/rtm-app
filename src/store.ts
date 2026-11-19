@@ -6,7 +6,7 @@ import { normalize, type Config } from './config'
 
 export type Change = { field: string; from: string; to: string }
 export type HistoryEntry = { project_id: string; req_id: string; changed_at: string; changed_by: string; action: string; changes: Change[] }
-export type Project = { id: string; name: string; organization: string; description: string; status: string; config?: Config; created_by?: string; created_at?: string }
+export type Project = { id: string; name: string; organization: string; description: string; status: string; config?: Config; deleted_at?: string | null; deleted_by?: string | null; created_by?: string; created_at?: string }
 export type Member = { project_id: string; email: string; role: 'owner' | 'member' }
 
 const URL = import.meta.env.VITE_SUPABASE_URL as string | undefined
@@ -102,14 +102,28 @@ export async function saveProject(p: Project): Promise<Project> {
   return data as Project
 }
 
-export async function deleteProject(id: string): Promise<void> {
+// Soft delete: move to trash (restorable). Hard delete only for trashed projects (also enforced in the database).
+async function setDeleted(id: string, deleted: boolean): Promise<void> {
+  const patch = { deleted_at: deleted ? new Date().toISOString() : null, deleted_by: deleted ? await currentUser() : null }
+  if (!sb) { write(LP, read<Project[]>(LP, []).map(p => p.id === id ? { ...p, ...patch } : p)); return }
+  const { data, error } = await sb.from('projects').update(patch).eq('id', id).select('id')
+  if (error) throw error
+  if (!data?.length) throw new Error('Only project owners can do this.')
+}
+export const trashProject = (id: string) => setDeleted(id, true)
+export const restoreProject = (id: string) => setDeleted(id, false)
+
+export async function purgeProject(id: string): Promise<void> {
   if (!sb) {
-    write(LP, read<Project[]>(LP, []).filter(p => p.id !== id))
+    const p = read<Project[]>(LP, []).find(x => x.id === id)
+    if (!p?.deleted_at) throw new Error('Move the project to trash first.')
+    write(LP, read<Project[]>(LP, []).filter(x => x.id !== id))
     write(LK, read<LocalReq[]>(LK, []).filter(r => r.project_id !== id))
     return
   }
-  const { error } = await sb.from('projects').delete().eq('id', id)
+  const { data, error } = await sb.from('projects').delete().eq('id', id).not('deleted_at', 'is', null).select('id')
   if (error) throw error
+  if (!data?.length) throw new Error('Not deleted: only owners can delete, and only projects in trash.')
 }
 
 export async function projectStats(): Promise<Record<string, Req[]>> {
