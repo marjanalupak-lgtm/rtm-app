@@ -243,5 +243,16 @@ body.resizing { cursor: col-resize; user-select: none; }
 .vm-row { display: flex; align-items: center; padding-right: 8px; }
 .vm-row .vm-item { flex: 1; min-width: 0; }
 .vm-tick { display: inline-block; width: 16px; height: 16px; flex: none; color: var(--uui-primary); }
-.vm-row .vm-del { margin-left: 12px; flex: none; }
+.vm-row .vm-act { margin-left: 12px; flex: none; }
+.vm-row .vm-del { margin-left: 6px; flex: none; }
 .vm-row .vm-del:hover { color: var(--uui-critical, #E54322) !important; border-color: var(--uui-critical, #E54322) !important; background: #FFF1EE !important; }
+
+/* Settings › IDs: structured ID tables */
+.idsc-title { margin-top: 16px; }
+.idsc-table { display: grid; gap: 6px; max-width: 760px; }
+.idsc-head, .idsc-row { display: grid; grid-template-columns: 110px 1fr 100px; gap: 12px; align-items: center; }
+.idsc-table.types .idsc-head, .idsc-table.types .idsc-row { grid-template-columns: 160px 110px 90px 100px 1fr; }
+.idsc-head { font-size: 12px; text-transform: uppercase; color: var(--uui-text-secondary); font-weight: 600; }
+.idsc-sep { width: 80px; }
+.id-builder { display: grid; grid-template-columns: minmax(120px, 40%) 1fr; gap: 8px; }
+.id-builder > :only-child { grid-column: 1 / -1; }

@@ -5,13 +5,15 @@ import { FIELDS } from './model'
 import { CORE_FIELDS, LIST_LABELS, LOCKED, RULES, defaultConfig, newCustomKey, normalize, type Config, type CustomField, type CustomType, type FieldKey, type RuleKey } from './config'
 import * as store from './store'
 import { Select } from './ui'
+import type { Req } from './model'
+import { defaultScheme, detectScheme, example, type IdScheme } from './idScheme'
 
 type Section = 'general' | 'lists' | 'fields' | 'custom' | 'rules' | 'workflow'
 const SECTIONS: [Section, string][] = [['general', 'IDs'], ['lists', 'Lists'], ['fields', 'Fields'], ['custom', 'Custom fields'], ['rules', 'Traceability rules'], ['workflow', 'Status workflow']]
 const CUSTOM_TYPES: CustomType[] = ['text', 'long', 'list', 'link', 'date']
 type ListName = keyof Config['lists']
 
-export function Settings(p: { projectId: string; config: Config; isOwner: boolean; onSaved: () => void; notify: (m: string, ok?: boolean) => void }) {
+export function Settings(p: { projectId: string; rows: Req[]; config: Config; isOwner: boolean; onSaved: () => void; notify: (m: string, ok?: boolean) => void }) {
   const [cfg, setCfg] = useState<Config>(p.config)
   const [sec, setSec] = useState<Section>('lists')
   const [listName, setListName] = useState<ListName>('release')
@@ -43,16 +45,71 @@ export function Settings(p: { projectId: string; config: Config; isOwner: boolea
           {SECTIONS.map(([k, c]) => <VerticalTabButton key={k} caption={c} isActive={sec === k} onClick={() => setSec(k)} />)}
         </Panel>
         <Panel background="surface-main" shadow cx="card settings-body">
-          {sec === 'general' && (
+          {sec === 'general' && (() => {
+            const sc: IdScheme = cfg.id.scheme ?? defaultScheme(cfg.lists.type)
+            const upS = (fn: (x: IdScheme) => void) => up(c => { const x = structuredClone(c.id.scheme ?? defaultScheme(c.lists.type)); fn(x); c.id.scheme = x })
+            const detect = () => up(c => { c.id.scheme = { ...detectScheme(p.rows, c.lists.type, c.id.scheme), on: true } })
+            return (
             <>
-              <Text fontSize="16" fontWeight="600">Requirement IDs</Text>
-              <div className="form-grid narrow">
-                <LabeledInput label="Prefix"><TextInput value={cfg.id.prefix} onValueChange={v => up(c => { c.id.prefix = v ?? '' })} isDisabled={ro} /></LabeledInput>
-                <LabeledInput label="Number of digits"><NumericInput value={cfg.id.digits} min={1} max={8} onValueChange={v => up(c => { c.id.digits = v ?? 3 })} isDisabled={ro} /></LabeledInput>
-              </div>
-              <Text color="secondary" fontSize="14">Next IDs look like <b>{cfg.id.prefix}{'1'.padStart(cfg.id.digits, '0')}</b>. Existing IDs are not renamed.</Text>
+              <FlexRow columnGap="12">
+                <Text fontSize="16" fontWeight="600">Requirement IDs</Text>
+                <FlexSpacer />
+                {!ro && <Button fill="outline" color="secondary" caption="Detect from my requirements" isDisabled={!p.rows.length} onClick={detect}
+                  rawProps={{ title: 'Read areas, type codes and number length from the IDs already in this project' }} />}
+              </FlexRow>
+              <Switch label="Structured IDs: area + type code + number (e.g. ST-FR-001)" value={sc.on} onValueChange={v => upS(x => { x.on = v })} isDisabled={ro} />
+              {!sc.on && (
+                <>
+                  <div className="form-grid narrow">
+                    <LabeledInput label="Prefix"><TextInput value={cfg.id.prefix} onValueChange={v => up(c => { c.id.prefix = v ?? '' })} isDisabled={ro} /></LabeledInput>
+                    <LabeledInput label="Number of digits"><NumericInput value={cfg.id.digits} min={1} max={8} onValueChange={v => up(c => { c.id.digits = v ?? 3 })} isDisabled={ro} /></LabeledInput>
+                  </div>
+                  <Text color="secondary" fontSize="14">Next IDs look like <b>{cfg.id.prefix}{'1'.padStart(cfg.id.digits, '0')}</b>. Existing IDs are not renamed.</Text>
+                </>
+              )}
+              {sc.on && (
+                <>
+                  <Text fontSize="14" fontWeight="600" cx="idsc-title">Areas</Text>
+                  <Text color="secondary" fontSize="14">The first part of an ID, e.g. ST = Staff, PA = Participant, SH = Shared.</Text>
+                  <div className="idsc-table">
+                    <div className="idsc-head"><span>Code</span><span>Name</span><span /></div>
+                    {sc.areas.map((a, i) => (
+                      <div key={i} className="idsc-row">
+                        <TextInput value={a.code} onValueChange={v => upS(x => { x.areas[i].code = (v ?? '').toUpperCase() })} isDisabled={ro} placeholder="ST" />
+                        <TextInput value={a.name} onValueChange={v => upS(x => { x.areas[i].name = v ?? '' })} isDisabled={ro} placeholder="e.g. Staff" />
+                        {!ro ? <Button size="30" fill="outline" color="secondary" caption="Remove" onClick={() => upS(x => { x.areas.splice(i, 1) })} /> : <span />}
+                      </div>
+                    ))}
+                    {!sc.areas.length && <Text color="secondary" fontSize="14">No areas yet.</Text>}
+                  </div>
+                  {!ro && <div><Button size="30" fill="none" color="primary" caption="+ Add area" onClick={() => upS(x => { x.areas.push({ code: '', name: '' }) })} /></div>}
+
+                  <Text fontSize="14" fontWeight="600" cx="idsc-title">Type codes</Text>
+                  <div className="idsc-table types">
+                    <div className="idsc-head"><span>Requirement type</span><span>Code</span><span>Uses area</span><span>Digits</span><span>Example</span></div>
+                    {cfg.lists.type.map(t => {
+                      const rule = sc.types[t] ?? defaultScheme([t]).types[t]
+                      const set = (fn: (r: typeof rule) => void) => upS(x => { x.types[t] = { ...rule }; fn(x.types[t]) })
+                      return (
+                        <div key={t} className="idsc-row">
+                          <Text fontSize="14">{t}</Text>
+                          <TextInput value={rule.code} onValueChange={v => set(r => { r.code = (v ?? '').toUpperCase() })} isDisabled={ro} />
+                          <Checkbox value={rule.area} onValueChange={v => set(r => { r.area = v })} isDisabled={ro} rawProps={{ 'aria-label': `${t} uses area` }} />
+                          <NumericInput value={rule.digits} min={1} max={8} onValueChange={v => set(r => { r.digits = v ?? 3 })} isDisabled={ro} />
+                          <Text fontSize="14" fontWeight="600">{example(sc, t)}</Text>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <FlexRow columnGap="12">
+                    <LabeledInput label="Separator"><TextInput value={sc.sep} onValueChange={v => upS(x => { x.sep = (v ?? '-').slice(0, 2) })} isDisabled={ro} cx="idsc-sep" /></LabeledInput>
+                  </FlexRow>
+                  <Text color="secondary" fontSize="14">A new requirement gets the next free number for its type and area. Existing IDs are not renamed.</Text>
+                </>
+              )}
             </>
-          )}
+            )
+          })()}
 
           {sec === 'lists' && (
             <div className="lists-grid">

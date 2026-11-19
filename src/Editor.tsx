@@ -7,6 +7,7 @@ import { check, allowedNext, gateFor } from './rules'
 import { history as loadHistory, uploadAttachment, removeAttachmentFile, newLink, type HistoryEntry } from './store'
 import { buildTree, levelOf } from './tree'
 import { Select, CheckBadge } from './ui'
+import { nextSchemeId } from './idScheme'
 
 const GROUPS: Field['group'][] = ['Core', 'Traceability', 'Design', 'Governance', 'Verification']
 
@@ -32,6 +33,17 @@ export function Editor(p: {
   const gate = p.isNew ? [] : gateFor(r, r.status, statusFrom, cfg)
   const idTaken = p.isNew && p.existingIds.has(r.id.trim())
   const designOff = r.design_required !== 'Yes'
+
+  // Structured IDs (Settings › IDs): a new requirement gets the next free ID for its type + area.
+  const sc = p.isNew && cfg.id.scheme?.on ? cfg.id.scheme : undefined
+  const needsArea = !!sc?.types[r.type]?.area
+  const [area, setArea] = useState(sc?.areas[0]?.code ?? '')
+  const [idTouched, setIdTouched] = useState(false)
+  useEffect(() => {
+    if (!sc || idTouched) return
+    const n = nextSchemeId(p.allRows, sc, r.type, area) ?? ''
+    setR(x => x.id === n ? x : { ...x, id: n })
+  }, [sc, r.type, area, idTouched, p.allRows])
 
   // Trace links (parents / children) from the whole project.
   const tree = useMemo(() => buildTree([...p.allRows.filter(x => x.id !== p.initial.id), r]), [p.allRows, r, p.initial.id])
@@ -88,6 +100,16 @@ export function Editor(p: {
   const input = (f: Field) => {
     const v = String(r[f.key] ?? '')
     const disabled = (f.group === 'Design' && f.key !== 'design_required' && designOff) || (f.key === 'id' && !p.isNew)
+    if (f.key === 'id' && sc) return (
+      <div className="id-builder">
+        {needsArea && sc.areas.length > 0 && (
+          <Select value={area} options={sc.areas.map(a => a.code)} labels={Object.fromEntries(sc.areas.map(a => [a.code, a.name ? `${a.code} · ${a.name}` : a.code]))}
+            onChange={x => { setArea(x); setIdTouched(false) }} placeholder="Area" />
+        )}
+        <TextInput value={v} onValueChange={x => { setIdTouched(true); set('id', x ?? '') }} isInvalid={idTaken}
+          placeholder={r.type ? 'Add areas in Settings › IDs' : 'Choose Requirement Type to get an ID'} />
+      </div>
+    )
     if (f.key === 'status') return <Select value={v} options={statusOpts} onChange={x => set('status', x)} />
     if (f.key === 'release' && cfg.lists.release.length) return <Select value={v} options={[...new Set([...cfg.lists.release, ...(v ? [v] : [])])]} onChange={x => set('release', x)} />
     if (f.list) return <Select value={v} options={[...new Set([...cfg.lists[f.list], ...(v ? [v] : [])])]} onChange={x => set(f.key, x)} isDisabled={disabled} />

@@ -155,7 +155,7 @@ function Main({ email, onSignOut }: { email: string; onSignOut: () => void }) {
   const dirtyRef = useRef(false)
   const guard = () => !dirtyRef.current || confirm('Discard unsaved changes?')
   const open = (r: Req) => { if (editing?.r.id === r.id && !editing.isNew && editing.tab === activeTab) return; if (guard()) { dirtyRef.current = false; setEditing({ r, isNew: false, pid, tab: activeTab }) } }
-  const startNew = () => { if (guard()) { dirtyRef.current = false; setEditing({ r: { ...emptyReq(nextIdFor(rows, cfg)), status: cfg.workflow.initial }, isNew: true, pid, tab: activeTab }) } }
+  const startNew = () => { if (guard()) { dirtyRef.current = false; setEditing({ r: { ...emptyReq(cfg.id.scheme?.on ? '' : nextIdFor(rows, cfg)), status: cfg.workflow.initial }, isNew: true, pid, tab: activeTab }) } }
   // Leaving the tab or project closes the open requirement (asks first if it has unsaved changes).
   const leave = (go: () => void) => { if (editing && !guard()) return; dirtyRef.current = false; setEditing(null); go() }
   const shown = editing && editing.pid === pid && editing.tab === activeTab ? editing : null
@@ -249,7 +249,7 @@ function Main({ email, onSignOut }: { email: string; onSignOut: () => void }) {
             )}
           </div>
         )}
-        {activeTab === 'settings' && project && <Settings projectId={pid} config={cfg} isOwner={!!project.isOwner} onSaved={loadProjects} notify={notify} />}
+        {activeTab === 'settings' && project && <Settings projectId={pid} rows={rows} config={cfg} isOwner={!!project.isOwner} onSaved={loadProjects} notify={notify} />}
         {activeTab === 'guide' && <Guide />}
       </main>
 

@@ -2,6 +2,7 @@
 // Stored as JSON on the project; always merged over defaults so new options appear automatically.
 import { createContext, useContext } from 'react'
 import { FIELDS, LISTS, TRANSITIONS, type ListKey, type Req } from './model'
+import { sanitizeScheme, type IdScheme } from './idScheme'
 
 export type FieldKey = (typeof FIELDS)[number]['key']
 export type FieldCfg = { label: string; visible: boolean; required: boolean; inTable: boolean }
@@ -20,7 +21,7 @@ export const RULES = {
 export type RuleKey = keyof typeof RULES
 
 export type Config = {
-  id: { prefix: string; digits: number }
+  id: { prefix: string; digits: number; scheme?: IdScheme }
   lists: Record<ListKey | 'release', string[]>
   fields: Record<FieldKey, FieldCfg>
   custom: CustomField[]
@@ -75,7 +76,7 @@ export function normalize(raw: unknown): Config {
   const transitions: Record<string, string[]> = {}
   for (const s of statuses) transitions[s] = (c.workflow?.transitions?.[s] ?? d.workflow.transitions[s] ?? []).filter(x => statuses.includes(x) && x !== s)
   return {
-    id: { prefix: String(c.id?.prefix ?? d.id.prefix), digits: Math.min(8, Math.max(1, Number(c.id?.digits) || d.id.digits)) },
+    id: { prefix: String(c.id?.prefix ?? d.id.prefix), digits: Math.min(8, Math.max(1, Number(c.id?.digits) || d.id.digits)), scheme: sanitizeScheme(c.id?.scheme, lists.type) },
     lists, fields,
     custom: Array.isArray(c.custom) ? c.custom.map(x => ({ ...x, options: x.options ?? [] })) : [],
     rules: { ...d.rules, ...(c.rules ?? {}) },

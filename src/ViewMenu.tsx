@@ -6,6 +6,7 @@ import { allViews, loadViews, newViewId, sameColumns, saveViews, PRESETS, type T
 
 const Tick = () => <svg className="vm-tick" width="16" height="16" viewBox="0 0 24 24" aria-hidden><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z" fill="currentColor" /></svg>
 const NoTick = () => <span className="vm-tick" aria-hidden />
+const Pencil = () => <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden><path d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75zM20.7 7.04a1 1 0 0 0 0-1.41l-2.33-2.33a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75z" fill="currentColor" /></svg>
 const Trash = () => <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6zm2-10h8v10H8zm7.5-5-1-1h-5l-1 1H5v2h14V4z" fill="currentColor" /></svg>
 
 function NameModal(p: IModal<string> & { title: string; initial: string; taken: string[] }) {
@@ -59,8 +60,8 @@ export function ViewMenu({ pid, allKeys, current, defaults, apply, notify }: {
     else persist({ ...st, custom: st.custom.map(v => v.id === active.id ? { ...v, columns: current } : v) })
     notify(`View “${active.name}” updated`)
   }
-  const rename = () => ask('Rename view', active.name).then(name => {
-    persist({ ...st, custom: st.custom.map(v => v.id === active.id ? { ...v, name } : v) })
+  const rename = (v: TableView) => uuiModals.show<string>(props => <NameModal {...props} title="Rename view" initial={v.name} taken={names.filter(n => n !== v.name)} />).then(name => {
+    persist(v.builtIn ? { ...st, names: { ...st.names, [v.id]: name } } : { ...st, custom: st.custom.map(x => x.id === v.id ? { ...x, name } : x) })
   }).catch(() => {})
   // Delete any view except Default. Built-in ones can be brought back with "Restore built-in views".
   const remove = (v: TableView) => {
@@ -97,6 +98,10 @@ export function ViewMenu({ pid, allKeys, current, defaults, apply, notify }: {
                   rawProps={{ 'aria-current': v.id === active.id ? 'true' : undefined }}
                   onClick={() => { switchTo(v); props.onClose?.() }} />
                 {v.id !== 'default' && (
+                  <Button cx="vm-act" size="24" fill="outline" color="secondary" icon={Pencil} onClick={() => { props.onClose?.(); rename(v) }}
+                    rawProps={{ 'aria-label': `Rename view ${v.name}`, title: `Rename view “${v.name}”` }} />
+                )}
+                {v.id !== 'default' && (
                   <Button cx="vm-del" size="24" fill="outline" color="secondary" icon={Trash} onClick={() => remove(v)}
                     rawProps={{ 'aria-label': `Delete view ${v.name}`, title: `Delete view “${v.name}”` }} />
                 )}
@@ -107,7 +112,6 @@ export function ViewMenu({ pid, allKeys, current, defaults, apply, notify }: {
           {modified && <DropdownMenuButton caption={`Update “${active.name}” with current columns`} onClick={() => { update(); props.onClose?.() }} />}
           {modified && <DropdownMenuButton caption="Discard column changes" onClick={() => { revert(); props.onClose?.() }} />}
           <DropdownMenuButton caption="Save current columns as new view…" onClick={() => { props.onClose?.(); saveAsNew() }} />
-          {!active.builtIn && <DropdownMenuButton caption={`Rename “${active.name}”…`} onClick={() => { props.onClose?.(); rename() }} />}
           {active.builtIn && st.overrides[active.id] && PRESETS.some(p => p.id === active.id) && (
             <DropdownMenuButton caption={`Reset “${active.name}” to original`} onClick={() => { resetBuiltIn(); props.onClose?.() }} />
           )}
