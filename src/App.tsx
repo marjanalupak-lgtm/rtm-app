@@ -5,7 +5,7 @@ import { emptyReq, type Req } from './model'
 import { ConfigContext, defaultConfig, fieldLabel } from './config'
 import { nextIdFor } from './rules'
 import { Settings } from './Settings'
-import { TreeTable } from './TreeTable'
+import { TreeTable, type FoldCmd } from './TreeTable'
 import * as store from './store'
 import { RtmTable, useTableState, columns as tableColumns } from './RtmTable'
 import { ColumnsConfigurationModal } from '@epam/uui'
@@ -70,6 +70,7 @@ function Main({ email }: { email: string }) {
   const [tab, setTab] = useState<Tab>(() => { const t = ls.get('rtm.tab'); return (t === 'tree' ? 'rtm' : t as Tab) || 'rtm' })
   const [view, setViewState] = useState<View>(() => ls.get('rtm.tab') === 'tree' || ls.get('rtm.view') === 'tree' ? 'tree' : 'list')
   const setView = (v: View) => { setViewState(v); ls.set('rtm.view', v) }
+  const [fold, setFold] = useState<FoldCmd | undefined>()
   const [projects, setProjects] = useState<Project[] | null>(null)
   const [pid, setPid] = useState(() => ls.get('rtm.project'))
   const [editProject, setEditProject] = useState<Project | null>(null)
@@ -192,6 +193,10 @@ function Main({ email }: { email: string }) {
             <div className="search"><SearchInput value={q} onValueChange={v => setQ(v ?? '')} placeholder="Search all fields" debounceDelay={150} /></div>
             {activeTab === 'rtm' && <MultiSwitch<View> size="36" value={view} onValueChange={setView} items={[{ id: 'list', caption: 'List' }, { id: 'tree', caption: 'Tree' }]} rawProps={{ 'aria-label': 'RTM view' }} />}
             {activeTab === 'rtm' && view === 'list' && <Button fill="outline" color="secondary" caption={hiddenCols ? `Columns · ${hiddenCols} hidden` : 'Columns'} onClick={openColumns} />}
+            {activeTab === 'rtm' && view === 'tree' && <>
+              <Button fill="outline" color="secondary" caption="Expand all" onClick={() => setFold(f => ({ mode: 'expand', n: (f?.n ?? 0) + 1 }))} />
+              <Button fill="outline" color="secondary" caption="Collapse all" onClick={() => setFold(f => ({ mode: 'collapse', n: (f?.n ?? 0) + 1 }))} />
+            </>}
             <FlexSpacer />
             <Text color="secondary" fontSize="14">{filtered.length} of {rows.length}</Text>
             {project?.canEdit !== false && <Button fill="outline" color="secondary" caption="Import Excel" onClick={() => fileRef.current?.click()} />}
@@ -209,7 +214,7 @@ function Main({ email }: { email: string }) {
             <div className="split-main">
               {view === 'list'
                 ? <RtmTable rows={filtered} onOpen={open} state={tableState} setState={setTableState} fctx={fctx} selectedId={editing?.isNew ? undefined : editing?.r.id} />
-                : <TreeTable rows={rows} q={q} filters={filters} onOpen={open} selectedId={editing?.isNew ? undefined : editing?.r.id} />}
+                : <TreeTable rows={rows} q={q} filters={filters} onOpen={open} selectedId={editing?.isNew ? undefined : editing?.r.id} fold={fold} />}
             </div>
             {editing && (
               <>

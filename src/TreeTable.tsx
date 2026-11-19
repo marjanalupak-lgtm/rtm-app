@@ -1,7 +1,7 @@
 // Tree view as a table: Business ▸ Stakeholder ▸ Functional / Non-functional / Transition.
 // Built from the Parent field. A requirement with several parents sits under the first one
 // ("also under …" names the others). Search and column filters keep the parents of matches.
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useArrayDataSource, type DataColumnProps, type DataTableState } from '@epam/uui-core'
 import { DataTable, Panel, Text } from '@epam/uui'
 import type { Req } from './model'
@@ -12,7 +12,9 @@ import { buildTree, levelOf, type TreeNode } from './tree'
 type Node = Req & { parentId?: string; also: string[]; kids: number }
 const LEVEL_CLASS = ['lv0', 'lv1', 'lv2']
 
-export function TreeTable({ rows, q, filters, selectedId, onOpen }: { rows: Req[]; q: string; filters: FilterState; selectedId?: string; onOpen: (r: Req) => void }) {
+export type FoldCmd = { mode: 'expand' | 'collapse'; n: number }
+
+export function TreeTable({ rows, q, filters, selectedId, onOpen, fold }: { rows: Req[]; q: string; filters: FilterState; selectedId?: string; onOpen: (r: Req) => void; fold?: FoldCmd }) {
   const cfg = useConfig()
   const items = useMemo<Node[]>(() => {
     const t = buildTree(rows)
@@ -27,6 +29,13 @@ export function TreeTable({ rows, q, filters, selectedId, onOpen }: { rows: Req[
   }, [rows])
 
   const [state, setState] = useState<DataTableState>({})
+  // Expand all / Collapse all from the toolbar.
+  useEffect(() => {
+    if (!fold) return
+    const folded: Record<string, boolean> = {}
+    for (const i of items) if (i.kids) folded[i.id] = fold.mode === 'collapse'
+    setState(s => ({ ...s, folded }))
+  }, [fold]) // eslint-disable-line react-hooks/exhaustive-deps
   const ds = useArrayDataSource<Node, string, unknown>({
     items, getId: i => i.id, getParentId: i => i.parentId,
     getSearchFields: i => [i.id, i.statement],
