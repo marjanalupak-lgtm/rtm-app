@@ -32,7 +32,10 @@ a:hover { text-decoration: underline; }
 
 .table-panel { overflow: hidden; border-radius: 6px; }
 .table-panel .uui-table-row { cursor: pointer; }
-.cell-text { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.cell-clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; max-height: 40px;
+  font-size: 14px; line-height: 20px; color: var(--uui-text-primary); word-break: break-word; margin: 8px 0; }
+.cell-clamp.strong { font-weight: 600; white-space: nowrap; -webkit-line-clamp: 1; }
+.table-panel .uui-table-header-cell .uui-caption, .table-panel [role=columnheader] span { white-space: nowrap; }
 .empty { padding: 36px; text-align: center; border-radius: 6px; }
 
 /* Dashboard */
