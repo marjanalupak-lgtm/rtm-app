@@ -88,3 +88,24 @@ a:hover { text-decoration: underline; }
 .member-add .grow { flex: 1; }
 .member-add .role { width: 120px; }
 @media (max-width: 700px) { .project-pick { width: 140px; } }
+
+/* Settings */
+.settings-grid { display: grid; grid-template-columns: 220px 1fr; gap: 18px; align-items: start; }
+.settings-nav { border-radius: 6px; padding: 6px 0; position: sticky; top: 78px; }
+.settings-body { min-width: 0; gap: 12px; }
+.form-grid.narrow { max-width: 480px; }
+.lists-grid { display: grid; grid-template-columns: 240px 1fr; gap: 18px; }
+.list-names { border-right: 1px solid var(--uui-divider); }
+.list-editor { display: flex; flex-direction: column; gap: 6px; max-width: 560px; }
+.list-row .grow, .grow { flex: 1; min-width: 0; }
+.arrow { font-size: 14px; padding: 0 4px; }
+.cfg-table td { vertical-align: middle; }
+.cfg-table .muted { color: var(--uui-text-secondary); font-size: 13px; width: 32%; }
+.rule-row { padding: 10px 0; border-bottom: 1px solid var(--uui-divider); }
+.rule-help { margin-left: 48px; }
+.matrix-wrap { overflow-x: auto; }
+.matrix th, .matrix td { text-align: center; white-space: nowrap; }
+.matrix td:first-child, .matrix th:first-child { text-align: left; }
+.custom-row { border: 1px solid var(--uui-divider); border-radius: 6px; padding: 12px 18px; display: flex; flex-direction: column; gap: 12px; }
+.custom-grid { display: grid; grid-template-columns: 1fr 200px; gap: 12px 18px; }
+@media (max-width: 900px) { .settings-grid, .lists-grid { grid-template-columns: 1fr; } .settings-nav { position: static; } .custom-grid { grid-template-columns: 1fr; } }

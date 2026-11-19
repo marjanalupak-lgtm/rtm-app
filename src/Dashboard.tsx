@@ -1,5 +1,7 @@
 import { Panel, Text, FlexRow } from '@epam/uui'
-import { LISTS, severity, traceCheck, type Req } from './model'
+import { severity, type Req } from './model'
+import { useConfig } from './config'
+import { check, isLive } from './rules'
 import { CheckBadge } from './ui'
 
 function Tile({ label, value, tone }: { label: string; value: string | number; tone?: string }) {
@@ -35,8 +37,10 @@ const count = (rows: Req[], key: keyof Req, values: readonly string[]): [string,
 }
 
 export function Dashboard({ rows, onOpen }: { rows: Req[]; onOpen: (r: Req) => void }) {
-  const live = rows.filter(r => r.statement && r.status !== 'Obsolete' && r.status !== 'Rejected')
-  const checks = live.map(r => ({ r, c: traceCheck(r) }))
+  const cfg = useConfig()
+  const LISTS = cfg.lists
+  const live = rows.filter(isLive)
+  const checks = live.map(r => ({ r, c: check(r, cfg) }))
   const covered = checks.filter(x => x.c === 'COVERED').length
   const pct = live.length ? Math.round((covered / live.length) * 100) : 0
   const gaps = checks.filter(x => x.c !== 'COVERED')

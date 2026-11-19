@@ -1,7 +1,9 @@
 // Projects tab: list of projects (cards) + side panel to create/edit a project and manage members.
 import { useEffect, useState } from 'react'
 import { Button, FlexRow, FlexSpacer, LabeledInput, Panel, Text, TextArea, TextInput, Badge, WarningAlert } from '@epam/uui'
-import { traceCheck, type Req } from './model'
+import { type Req } from './model'
+import { check, isLive } from './rules'
+import { normalize } from './config'
 import * as store from './store'
 import type { Project, Member } from './store'
 import { Select } from './ui'
@@ -9,10 +11,10 @@ import { Select } from './ui'
 const STATUSES = ['Active', 'On Hold', 'Closed'] as const
 export const emptyProject = (): Project => ({ id: '', name: '', organization: '', description: '', status: 'Active' })
 
-function coverage(rows: Req[]) {
-  const live = rows.filter(r => r.statement && r.status !== 'Obsolete' && r.status !== 'Rejected')
+function coverage(rows: Req[], cfg = normalize(undefined)) {
+  const live = rows.filter(isLive)
   if (!live.length) return { total: 0, pct: 0, gaps: 0 }
-  const ok = live.filter(r => traceCheck(r) === 'COVERED').length
+  const ok = live.filter(r => check(r, cfg) === 'COVERED').length
   return { total: live.length, pct: Math.round((ok / live.length) * 100), gaps: live.length - ok }
 }
 
@@ -42,7 +44,7 @@ export function ProjectsTab(p: {
       )}
       <div className="cards">
         {list.map(pr => {
-          const c = coverage(stats[pr.id] ?? [])
+          const c = coverage(stats[pr.id] ?? [], pr.config)
           return (
             <Panel key={pr.id} background="surface-main" shadow cx={'card project-card' + (pr.id === p.currentId ? ' current' : '')}>
               <FlexRow columnGap="12">

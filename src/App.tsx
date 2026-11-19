@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { useUuiContext } from '@epam/uui-core'
 import { Button, FlexRow, FlexSpacer, SearchInput, TabButton, Text, TextInput, Panel, SuccessNotification, ErrorNotification, LabeledInput, Badge } from '@epam/uui'
-import { emptyReq, nextId, traceCheck, severity, LISTS, type Req } from './model'
+import { emptyReq, severity, type Req } from './model'
+import { ConfigContext, defaultConfig, fieldLabel } from './config'
+import { check, nextIdFor } from './rules'
+import { Settings } from './Settings'
 import * as store from './store'
 import { RtmTable } from './RtmTable'
 import { Dashboard } from './Dashboard'
@@ -12,8 +15,8 @@ import { MultiSelect, Select } from './ui'
 import { ProjectsTab, ProjectEditor } from './Projects'
 import type { Project } from './store'
 
-type Tab = 'projects' | 'dashboard' | 'rtm' | 'guide'
-const TABS: [Tab, string][] = [['projects', 'Projects'], ['dashboard', 'Dashboard'], ['rtm', 'RTM'], ['guide', 'Guide & rules']]
+type Tab = 'projects' | 'dashboard' | 'rtm' | 'settings' | 'guide'
+const TABS: [Tab, string][] = [['projects', 'Projects'], ['dashboard', 'Dashboard'], ['rtm', 'RTM'], ['settings', 'Settings'], ['guide', 'Guide & rules']]
 const ls = { get: (k: string) => { try { return localStorage.getItem(k) ?? '' } catch { return '' } }, set: (k: string, v: string) => { try { localStorage.setItem(k, v) } catch { /* ignore */ } } }
 
 function Login() {
@@ -75,6 +78,8 @@ function Main({ email }: { email: string }) {
   }).catch(e => notify('Load failed: ' + e.message, false)), [notify])
   useEffect(() => { loadProjects() }, [loadProjects])
   const project = projects?.find(p => p.id === pid)
+  const cfg = useMemo(() => project?.config ?? defaultConfig(), [project])
+  useEffect(() => { store.setLabels(k => fieldLabel(cfg, k)) }, [cfg])
 
   const reload = useCallback(() => {
     if (!pid) { setRows([]); return Promise.resolve() }
@@ -85,25 +90,25 @@ function Main({ email }: { email: string }) {
   useEffect(() => { ls.set('rtm.project', pid) }, [pid])
   const activeTab: Tab = projects && !project ? 'projects' : tab
 
-  const releases = useMemo(() => [...new Set(rows.map(r => r.release).filter(Boolean))].sort(), [rows])
+  const releases = useMemo(() => [...new Set([...cfg.lists.release, ...rows.map(r => r.release).filter(Boolean)])], [rows, cfg])
   const filtered = useMemo(() => {
     const s = q.toLowerCase()
     return rows.filter(r => {
-      if (s && !Object.values(r).some(v => String(v ?? '').toLowerCase().includes(s))) return false
+      if (s && ![...Object.values(r), ...Object.values(r.extra ?? {})].some(v => typeof v !== 'object' && String(v ?? '').toLowerCase().includes(s))) return false
       if (fStatus.length && !fStatus.includes(r.status)) return false
       if (fRelease.length && !fRelease.includes(r.release)) return false
       if (fCheck.length) {
-        const sev = severity(traceCheck(r))
+        const sev = severity(check(r, cfg))
         const label = sev === 'ok' ? 'Covered' : sev === 'bad' ? 'Critical gap' : sev === 'warn' ? 'Gap' : ''
         if (!fCheck.includes(label)) return false
       }
       return true
     })
-  }, [rows, q, fStatus, fRelease, fCheck])
+  }, [rows, q, fStatus, fRelease, fCheck, cfg])
 
   const onImport = async (file: File) => {
     try {
-      const incoming = await (await import('./excel')).importExcel(file)
+      const incoming = await (await import('./excel')).importExcel(file, cfg)
       const n = await store.bulkSave(pid, incoming, rows)
       await reload()
       notify(`Imported ${incoming.length} rows (${n} new or changed).`)
@@ -113,6 +118,7 @@ function Main({ email }: { email: string }) {
   const open = (r: Req) => setEditing({ r, isNew: false })
 
   return (
+    <ConfigContext.Provider value={cfg}>
     <div className="app">
       <header className="topbar">
         <div className="brand">RTM</div>
@@ -132,21 +138,22 @@ function Main({ email }: { email: string }) {
           <FlexRow columnGap="12" cx="toolbar" rawProps={{ role: 'toolbar' }}>
             <div className="search"><SearchInput value={q} onValueChange={v => setQ(v ?? '')} placeholder="Search all fields" debounceDelay={150} /></div>
             {activeTab === 'rtm' && <>
-              <div className="filter"><MultiSelect value={fStatus} options={LISTS.status} onChange={setFStatus} placeholder="Status" /></div>
+              <div className="filter"><MultiSelect value={fStatus} options={cfg.lists.status} onChange={setFStatus} placeholder="Status" /></div>
               <div className="filter"><MultiSelect value={fRelease} options={releases} onChange={setFRelease} placeholder="Release" /></div>
               <div className="filter"><MultiSelect value={fCheck} options={['Covered', 'Gap', 'Critical gap']} onChange={setFCheck} placeholder="Traceability" /></div>
             </>}
             <FlexSpacer />
             <Text color="secondary" fontSize="14">{filtered.length} of {rows.length}</Text>
             <Button fill="outline" color="secondary" caption="Import Excel" onClick={() => fileRef.current?.click()} />
-            <Button fill="outline" color="secondary" caption="Export Excel" onClick={() => import('./excel').then(m => m.exportExcel(filtered, project?.name ?? 'RTM'))} />
-            <Button color="accent" caption="+ Requirement" onClick={() => setEditing({ r: emptyReq(nextId(rows)), isNew: true })} />
+            <Button fill="outline" color="secondary" caption="Export Excel" onClick={() => import('./excel').then(m => m.exportExcel(filtered, project?.name ?? 'RTM', cfg))} />
+            <Button color="accent" caption="+ Requirement" onClick={() => setEditing({ r: { ...emptyReq(nextIdFor(rows, cfg)), status: cfg.workflow.initial }, isNew: true })} />
             <input ref={fileRef} type="file" accept=".xlsx,.xlsm" hidden onChange={e => { const f = e.target.files?.[0]; if (f) onImport(f); e.target.value = '' }} />
           </FlexRow>
         )}
         {activeTab === 'projects' && projects && <ProjectsTab projects={projects} currentId={pid} onOpen={id => { setPid(id); setTab('rtm') }} onEdit={setEditProject} />}
         {activeTab === 'dashboard' && <Dashboard rows={filtered} onOpen={open} />}
         {activeTab === 'rtm' && <RtmTable rows={filtered} onOpen={open} />}
+        {activeTab === 'settings' && project && <Settings projectId={pid} config={cfg} me={email} onSaved={loadProjects} notify={notify} />}
         {activeTab === 'guide' && <Guide />}
       </main>
 
@@ -168,5 +175,6 @@ function Main({ email }: { email: string }) {
           onDeleted={async () => { setEditProject(null); await loadProjects(); notify('Project deleted') }} />
       )}
     </div>
+    </ConfigContext.Provider>
   )
 }

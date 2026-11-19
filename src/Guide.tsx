@@ -1,15 +1,25 @@
 import { Panel, Text } from '@epam/uui'
-import { FIELDS, GATES, TRANSITIONS } from './model'
+import { FIELDS, GATES } from './model'
+import { useConfig, RULES, type RuleKey } from './config'
 
 export function Guide() {
+  const cfg = useConfig()
   return (
     <div className="dash">
       <Panel background="surface-main" shadow cx="card">
-        <Text fontSize="16" fontWeight="600">Requirement status transitions</Text>
+        <Text fontSize="16" fontWeight="600">Requirement status transitions {cfg.workflow.enforce ? '' : '(not enforced in this project)'}</Text>
         <table className="gtable">
           <thead><tr><th>Status</th><th>Allowed next</th><th>Required before transition</th></tr></thead>
-          <tbody>{Object.entries(TRANSITIONS).map(([s, n]) => (
-            <tr key={s}><td><b>{s}</b></td><td>{n.join(', ') || 'Final — create a new requirement'}</td><td>{GATES[s]}</td></tr>
+          <tbody>{cfg.lists.status.map(s => { const n = cfg.workflow.transitions[s] ?? []; return (
+            <tr key={s}><td><b>{s}</b>{s === cfg.workflow.initial ? ' (initial)' : ''}</td><td>{n.join(', ') || 'Final — create a new requirement'}</td><td>{GATES[s] ?? '—'}</td></tr>
+          ) })}</tbody>
+        </table>
+      </Panel>
+      <Panel background="surface-main" shadow cx="card">
+        <Text fontSize="16" fontWeight="600">Traceability rules in this project</Text>
+        <table className="gtable">
+          <tbody>{(Object.keys(RULES) as RuleKey[]).map(k => (
+            <tr key={k}><td><b>{RULES[k].label}</b></td><td>{cfg.rules[k] ? 'On' : 'Off'}</td><td>{RULES[k].help}</td></tr>
           ))}</tbody>
         </table>
       </Panel>
@@ -18,8 +28,10 @@ export function Guide() {
         <Text fontSize="14" color="secondary">* always required · † conditionally required · no mark = optional</Text>
         <table className="gtable">
           <thead><tr><th>Field</th><th>Group</th><th>Rule</th></tr></thead>
-          <tbody>{FIELDS.map(f => (
-            <tr key={f.key}><td>{f.label}{f.req}</td><td>{f.group}</td><td>{f.help ?? (f.req === '*' ? 'Always' : f.req === '†' ? 'Conditional' : 'Optional')}</td></tr>
+          <tbody>{FIELDS.filter(f => cfg.fields[f.key].visible).map(f => (
+            <tr key={f.key}><td>{cfg.fields[f.key].label}{cfg.fields[f.key].required ? '*' : f.req === '†' ? '†' : ''}</td><td>{f.group}</td><td>{f.help ?? (cfg.fields[f.key].required ? 'Always' : f.req === '†' ? 'Conditional' : 'Optional')}</td></tr>
+          ))}{cfg.custom.map(c => (
+            <tr key={c.key}><td>{c.label}{c.required ? '*' : ''}</td><td>Custom ({c.type})</td><td>{c.required ? 'Always' : 'Optional'}</td></tr>
           ))}</tbody>
         </table>
       </Panel>

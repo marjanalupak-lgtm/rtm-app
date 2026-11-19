@@ -2,10 +2,11 @@
 // otherwise a local (browser-only) demo store.
 import { createClient, type SupabaseClient, type Session } from '@supabase/supabase-js'
 import { FIELDS, type Req } from './model'
+import { normalize, type Config } from './config'
 
 export type Change = { field: string; from: string; to: string }
 export type HistoryEntry = { project_id: string; req_id: string; changed_at: string; changed_by: string; action: string; changes: Change[] }
-export type Project = { id: string; name: string; organization: string; description: string; status: string; created_by?: string; created_at?: string }
+export type Project = { id: string; name: string; organization: string; description: string; status: string; config?: Config; created_by?: string; created_at?: string }
 export type Member = { project_id: string; email: string; role: 'owner' | 'member' }
 
 const URL = import.meta.env.VITE_SUPABASE_URL as string | undefined
@@ -16,16 +17,26 @@ export const mode: 'cloud' | 'local' = sb ? 'cloud' : 'local'
 const COLS = FIELDS.map(f => f.key)
 
 function clean(r: Req): Req {
-  const o: Record<string, string> = {}
+  const o: Record<string, unknown> = {}
   for (const k of COLS) o[k] = String((r as Record<string, unknown>)[k] ?? '').trim()
+  const extra: Record<string, string> = {}
+  for (const [k, v] of Object.entries(r.extra ?? {})) if (String(v ?? '').trim()) extra[k] = String(v).trim()
+  o.extra = extra
   return o as unknown as Req
 }
 
-export function diff(a: Req | undefined, b: Req): Change[] {
-  return COLS.filter(k => (a?.[k] ?? '') !== (b[k] ?? '')).map(k => ({
-    field: FIELDS.find(f => f.key === k)!.label, from: String(a?.[k] ?? ''), to: String(b[k] ?? ''),
-  }))
+// labels: optional per-project field labels for history entries.
+export function diff(a: Req | undefined, b: Req, labels: (k: string) => string = k => FIELDS.find(f => f.key === k)?.label ?? k): Change[] {
+  const out: Change[] = COLS.filter(k => String(a?.[k] ?? '') !== String(b[k] ?? '')).map(k => ({ field: labels(k), from: String(a?.[k] ?? ''), to: String(b[k] ?? '') }))
+  const keys = new Set([...Object.keys(a?.extra ?? {}), ...Object.keys(b.extra ?? {})])
+  for (const k of keys) {
+    const x = String(a?.extra?.[k] ?? ''), y = String(b.extra?.[k] ?? '')
+    if (x !== y) out.push({ field: labels(k), from: x, to: y })
+  }
+  return out
 }
+let labelFn: ((k: string) => string) | undefined
+export function setLabels(fn: (k: string) => string) { labelFn = fn }
 
 // ---------- local demo store ----------
 const LK = 'rtm.rows.v2', LH = 'rtm.history.v2', LP = 'rtm.projects.v1'
@@ -57,10 +68,22 @@ export async function signOut() { await sb?.auth.signOut() }
 
 // ---------- projects ----------
 export async function listProjects(): Promise<Project[]> {
-  if (!sb) return read<Project[]>(LP, [])
-  const { data, error } = await sb.from('projects').select('*').order('name')
+  const raw: Project[] = sb ? await (async () => {
+    const { data, error } = await sb.from('projects').select('*').order('name')
+    if (error) throw error
+    return data as Project[]
+  })() : read<Project[]>(LP, [])
+  return raw.map(p => ({ ...p, config: normalize(p.config) }))
+}
+
+export async function saveConfig(projectId: string, config: Config): Promise<void> {
+  if (!sb) {
+    write(LP, read<Project[]>(LP, []).map(p => p.id === projectId ? { ...p, config } : p))
+    return
+  }
+  const { data, error } = await sb.from('projects').update({ config }).eq('id', projectId).select('id')
   if (error) throw error
-  return data as Project[]
+  if (!data?.length) throw new Error('Only project owners can change settings.')
 }
 
 export async function saveProject(p: Project): Promise<Project> {
@@ -127,7 +150,7 @@ export async function listReqs(projectId: string): Promise<Req[]> {
 
 export async function saveReq(projectId: string, r: Req, prev: Req | undefined, action = prev ? 'update' : 'create'): Promise<void> {
   const row = clean(r)
-  const changes = diff(prev, row)
+  const changes = diff(prev, row, labelFn)
   if (prev && !changes.length) return
   const who = await currentUser()
   const now = new Date().toISOString()
@@ -152,7 +175,7 @@ export async function bulkSave(projectId: string, rows: Req[], existing: Req[]):
   for (const r of rows) {
     if (!r.id) continue
     const prev = byId.get(r.id)
-    if (prev && !diff(prev, clean(r)).length) continue
+    if (prev && !diff(prev, clean(r), labelFn).length) continue
     await saveReq(projectId, r, prev, prev ? 'import-update' : 'import')
     n++
   }

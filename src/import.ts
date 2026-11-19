@@ -2,6 +2,7 @@
 // Finds the sheet + header row that contains "Requirement ID" and maps columns by header name.
 import * as XLSX from 'xlsx'
 import { FIELDS, emptyReq, type Req } from './model'
+import { defaultConfig, type Config } from './config'
 
 const norm = (s: string) => s.toLowerCase().replace(/[*†]/g, '').replace(/\s+/g, ' ').trim()
 
@@ -13,7 +14,7 @@ function cellText(c: XLSX.CellObject | undefined): string {
   return String(c.v ?? '').trim()
 }
 
-export function parseWorkbook(data: ArrayBuffer): Req[] {
+export function parseWorkbook(data: ArrayBuffer, cfg: Config = defaultConfig()): Req[] {
   const wb = XLSX.read(data, { type: 'array', cellDates: true, cellFormula: false, cellHTML: false, bookVBA: false })
   const names = [...wb.SheetNames].sort((a, b) => (b === 'RTM' ? 1 : 0) - (a === 'RTM' ? 1 : 0))  // "RTM" first
   for (const name of names) {
@@ -32,8 +33,13 @@ export function parseWorkbook(data: ArrayBuffer): Req[] {
     for (let r = header + 1; r <= range.e.r; r++) {
       const req = emptyReq()
       for (const f of FIELDS) {
-        const c = colOf.get(norm(f.label))
-        ;(req as Record<string, string>)[f.key] = c === undefined ? '' : cellText(at(r, c))
+        const c = colOf.get(norm(cfg.fields[f.key].label)) ?? colOf.get(norm(f.label))   // project label or template label
+        ;(req as unknown as Record<string, string>)[f.key] = c === undefined ? '' : cellText(at(r, c))
+      }
+      for (const cf of cfg.custom) {
+        const c = colOf.get(norm(cf.label))
+        const v = c === undefined ? '' : cellText(at(r, c))
+        if (v) req.extra = { ...(req.extra ?? {}), [cf.key]: v }
       }
       if (!req.id && !req.statement) continue
       out.push(req)
@@ -43,6 +49,6 @@ export function parseWorkbook(data: ArrayBuffer): Req[] {
   throw new Error('No sheet with a "Requirement ID" header was found.')
 }
 
-export async function importExcel(file: File): Promise<Req[]> {
-  return parseWorkbook(await file.arrayBuffer())
+export async function importExcel(file: File, cfg?: Config): Promise<Req[]> {
+  return parseWorkbook(await file.arrayBuffer(), cfg)
 }

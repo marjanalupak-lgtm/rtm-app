@@ -42,6 +42,7 @@ export type Req = {
   test_exec: string     // Y
   defect: string        // Z
   notes: string         // AB
+  extra?: Record<string, string> // custom fields (per-project config)
   updated_at?: string
   updated_by?: string
 }

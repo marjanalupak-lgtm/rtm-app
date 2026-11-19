@@ -1,0 +1,205 @@
+// Project settings: IDs, lists, fields, custom fields, traceability rules, status workflow.
+import { useEffect, useMemo, useState } from 'react'
+import { Button, Checkbox, FlexRow, FlexSpacer, IconButton, LabeledInput, NumericInput, Panel, Switch, Text, TextInput, VerticalTabButton, Badge } from '@epam/uui'
+import { FIELDS } from './model'
+import { CORE_FIELDS, LIST_LABELS, LOCKED, RULES, defaultConfig, newCustomKey, normalize, type Config, type CustomField, type CustomType, type FieldKey, type RuleKey } from './config'
+import * as store from './store'
+import { Select } from './ui'
+
+type Section = 'general' | 'lists' | 'fields' | 'custom' | 'rules' | 'workflow'
+const SECTIONS: [Section, string][] = [['general', 'IDs'], ['lists', 'Lists'], ['fields', 'Fields'], ['custom', 'Custom fields'], ['rules', 'Traceability rules'], ['workflow', 'Status workflow']]
+const CUSTOM_TYPES: CustomType[] = ['text', 'long', 'list', 'link', 'date']
+type ListName = keyof Config['lists']
+
+export function Settings(p: { projectId: string; config: Config; me: string; onSaved: () => void; notify: (m: string, ok?: boolean) => void }) {
+  const [cfg, setCfg] = useState<Config>(p.config)
+  const [sec, setSec] = useState<Section>('lists')
+  const [listName, setListName] = useState<ListName>('release')
+  const [owner, setOwner] = useState(store.mode === 'local')
+  const [busy, setBusy] = useState(false)
+  useEffect(() => setCfg(p.config), [p.config])
+  useEffect(() => {
+    if (store.mode === 'local') return
+    store.listMembers(p.projectId).then(ms => setOwner(ms.some(m => m.email === p.me.toLowerCase() && m.role === 'owner'))).catch(() => setOwner(false))
+  }, [p.projectId, p.me])
+  const dirty = useMemo(() => JSON.stringify(cfg) !== JSON.stringify(p.config), [cfg, p.config])
+  const ro = !owner
+
+  const up = (fn: (c: Config) => void) => setCfg(c => { const n = structuredClone(c); fn(n); return n })
+  const save = async () => {
+    setBusy(true)
+    try { const n = normalize(cfg); await store.saveConfig(p.projectId, n); setCfg(n); p.onSaved(); p.notify('Settings saved') }
+    catch (e) { p.notify('Save failed: ' + (e as Error).message, false) } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="settings">
+      <FlexRow columnGap="12" cx="toolbar">
+        <Text fontSize="18" fontWeight="600">Project settings</Text>
+        {ro && <Badge size="24" color="neutral" fill="outline" caption="Read only — only owners can change settings" />}
+        <FlexSpacer />
+        {!ro && <Button fill="none" color="secondary" caption="Reset to defaults" onClick={() => { if (confirm('Reset all settings of this project to defaults? Data is not affected.')) setCfg(defaultConfig()) }} />}
+        {!ro && dirty && <Button fill="outline" color="secondary" caption="Discard" onClick={() => setCfg(p.config)} />}
+        {!ro && <Button color="primary" caption={busy ? 'Saving…' : 'Save settings'} isDisabled={!dirty || busy} onClick={save} />}
+      </FlexRow>
+      <div className="settings-grid">
+        <Panel background="surface-main" shadow cx="settings-nav">
+          {SECTIONS.map(([k, c]) => <VerticalTabButton key={k} caption={c} isActive={sec === k} onClick={() => setSec(k)} />)}
+        </Panel>
+        <Panel background="surface-main" shadow cx="card settings-body">
+          {sec === 'general' && (
+            <>
+              <Text fontSize="16" fontWeight="600">Requirement IDs</Text>
+              <div className="form-grid narrow">
+                <LabeledInput label="Prefix"><TextInput value={cfg.id.prefix} onValueChange={v => up(c => { c.id.prefix = v ?? '' })} isDisabled={ro} /></LabeledInput>
+                <LabeledInput label="Number of digits"><NumericInput value={cfg.id.digits} min={1} max={8} onValueChange={v => up(c => { c.id.digits = v ?? 3 })} isDisabled={ro} /></LabeledInput>
+              </div>
+              <Text color="secondary" fontSize="14">Next IDs look like <b>{cfg.id.prefix}{'1'.padStart(cfg.id.digits, '0')}</b>. Existing IDs are not renamed.</Text>
+            </>
+          )}
+
+          {sec === 'lists' && (
+            <div className="lists-grid">
+              <div className="list-names">
+                {(Object.keys(LIST_LABELS) as ListName[]).map(k => (
+                  <VerticalTabButton key={k} caption={`${LIST_LABELS[k]} (${cfg.lists[k].length})`} isActive={listName === k} onClick={() => setListName(k)} />
+                ))}
+              </div>
+              <ListEditor key={listName} name={listName} values={cfg.lists[listName]} ro={ro}
+                onChange={vals => up(c => { c.lists[listName] = vals })} />
+            </div>
+          )}
+
+          {sec === 'fields' && (
+            <>
+              <Text fontSize="16" fontWeight="600">Fields</Text>
+              <Text color="secondary" fontSize="14">Rename, hide, make required, and choose table columns. ID, statement and status are always shown.</Text>
+              <table className="gtable cfg-table">
+                <thead><tr><th>Field</th><th>Label</th><th>Visible</th><th>Required</th><th>In table</th></tr></thead>
+                <tbody>{FIELDS.map(f => {
+                  const fc = cfg.fields[f.key as FieldKey], core = CORE_FIELDS.includes(f.key as FieldKey)
+                  return (
+                    <tr key={f.key}>
+                      <td className="muted">{f.label}</td>
+                      <td><TextInput size="30" value={fc.label} onValueChange={v => up(c => { c.fields[f.key as FieldKey].label = v ?? '' })} isDisabled={ro} /></td>
+                      <td><Checkbox value={fc.visible} onValueChange={v => up(c => { c.fields[f.key as FieldKey].visible = !!v })} isDisabled={ro || core} /></td>
+                      <td><Checkbox value={fc.required} onValueChange={v => up(c => { c.fields[f.key as FieldKey].required = !!v })} isDisabled={ro || (core && f.key !== 'status') || !fc.visible} /></td>
+                      <td><Checkbox value={fc.inTable} onValueChange={v => up(c => { c.fields[f.key as FieldKey].inTable = !!v })} isDisabled={ro || f.key === 'id' || !fc.visible} /></td>
+                    </tr>
+                  )
+                })}</tbody>
+              </table>
+            </>
+          )}
+
+          {sec === 'custom' && <CustomFields list={cfg.custom} ro={ro} onChange={list => up(c => { c.custom = list })} />}
+
+          {sec === 'rules' && (
+            <>
+              <Text fontSize="16" fontWeight="600">Traceability rules</Text>
+              <Text color="secondary" fontSize="14">Each rule adds a gap to the Traceability Check when broken. Turn off what this project doesn't need.</Text>
+              {(Object.keys(RULES) as RuleKey[]).map(k => (
+                <div key={k} className="rule-row">
+                  <Switch value={cfg.rules[k]} onValueChange={v => up(c => { c.rules[k] = v })} isDisabled={ro} label={RULES[k].label} />
+                  <Text fontSize="12" color="secondary" cx="rule-help">{RULES[k].help}</Text>
+                </div>
+              ))}
+            </>
+          )}
+
+          {sec === 'workflow' && (
+            <>
+              <Text fontSize="16" fontWeight="600">Requirement status workflow</Text>
+              <div className="rule-row"><Switch value={cfg.workflow.enforce} onValueChange={v => up(c => { c.workflow.enforce = v })} isDisabled={ro} label="Allow only the transitions below" /></div>
+              <div className="form-grid narrow">
+                <LabeledInput label="Status of new requirements"><Select value={cfg.workflow.initial} options={cfg.lists.status} onChange={v => up(c => { c.workflow.initial = v })} isDisabled={ro} noClear /></LabeledInput>
+              </div>
+              <Text color="secondary" fontSize="14">Rows = current status, columns = allowed next status. Statuses are edited in Lists → Requirement Status.</Text>
+              <div className="matrix-wrap">
+                <table className="gtable matrix">
+                  <thead><tr><th>From \ To</th>{cfg.lists.status.map(s => <th key={s}>{s}</th>)}</tr></thead>
+                  <tbody>{cfg.lists.status.map(from => (
+                    <tr key={from}><td><b>{from}</b></td>{cfg.lists.status.map(to => (
+                      <td key={to}>{from === to ? '—' : (
+                        <Checkbox value={(cfg.workflow.transitions[from] ?? []).includes(to)} isDisabled={ro || !cfg.workflow.enforce}
+                          onValueChange={v => up(c => { const t = new Set(c.workflow.transitions[from] ?? []); if (v) t.add(to); else t.delete(to); c.workflow.transitions[from] = [...t] })} />
+                      )}</td>
+                    ))}</tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </Panel>
+      </div>
+    </div>
+  )
+}
+
+function ListEditor(p: { name: ListName; values: string[]; ro: boolean; onChange: (v: string[]) => void }) {
+  const [add, setAdd] = useState('')
+  const locked = (LOCKED as Record<string, string[] | undefined>)[p.name] ?? []
+  const move = (i: number, d: number) => { const v = [...p.values]; const [x] = v.splice(i, 1); v.splice(i + d, 0, x); p.onChange(v) }
+  const doAdd = () => { const v = add.trim(); if (v && !p.values.includes(v)) p.onChange([...p.values, v]); setAdd('') }
+  return (
+    <div className="list-editor">
+      <Text fontSize="16" fontWeight="600">{LIST_LABELS[p.name]}</Text>
+      <Text color="secondary" fontSize="12">
+        {p.name === 'release' ? 'If empty, Release is free text. If filled, it becomes a dropdown.' : 'Order here = order in dropdowns and charts. Renaming does not change values already saved on requirements.'}
+      </Text>
+      {p.values.map((v, i) => {
+        const lock = locked.includes(v)
+        return (
+          <FlexRow key={i} columnGap="6" cx="list-row">
+            <div className="grow"><TextInput size="30" value={v} isDisabled={p.ro || lock}
+              onValueChange={x => { const n = [...p.values]; n[i] = x ?? ''; p.onChange(n) }} /></div>
+            {lock && <Badge size="18" color="neutral" fill="outline" caption="used by rules" />}
+            {!p.ro && <>
+              <IconButton icon={() => <span className="arrow">↑</span>} isDisabled={i === 0} onClick={() => move(i, -1)} />
+              <IconButton icon={() => <span className="arrow">↓</span>} isDisabled={i === p.values.length - 1} onClick={() => move(i, 1)} />
+              <Button size="24" fill="none" color="critical" caption="Remove" isDisabled={lock} onClick={() => p.onChange(p.values.filter((_, j) => j !== i))} />
+            </>}
+          </FlexRow>
+        )
+      })}
+      {!p.ro && (
+        <FlexRow columnGap="6" cx="list-row">
+          <div className="grow"><TextInput size="30" value={add} onValueChange={v => setAdd(v ?? '')} placeholder="New value" onAccept={doAdd} /></div>
+          <Button size="30" color="primary" fill="outline" caption="Add" onClick={doAdd} />
+        </FlexRow>
+      )}
+    </div>
+  )
+}
+
+function CustomFields(p: { list: CustomField[]; ro: boolean; onChange: (l: CustomField[]) => void }) {
+  const set = (i: number, patch: Partial<CustomField>) => p.onChange(p.list.map((c, j) => j === i ? { ...c, ...patch } : c))
+  return (
+    <>
+      <Text fontSize="16" fontWeight="600">Custom fields</Text>
+      <Text color="secondary" fontSize="14">Extra fields for this project (e.g. Regulation, Risk, Component). They appear in the form, table, Excel import/export and history.</Text>
+      {p.list.map((c, i) => (
+        <div key={c.key} className="custom-row">
+          <div className="custom-grid">
+            <LabeledInput label="Label"><TextInput value={c.label} onValueChange={v => set(i, { label: v ?? '' })} isDisabled={p.ro} /></LabeledInput>
+            <LabeledInput label="Type"><Select value={c.type} options={CUSTOM_TYPES} onChange={v => set(i, { type: (v || 'text') as CustomType })} isDisabled={p.ro} noClear /></LabeledInput>
+            {c.type === 'list' && (
+              <div className="span2"><LabeledInput label="Options (comma-separated)">
+                <TextInput value={c.options.join(', ')} onValueChange={v => set(i, { options: (v ?? '').split(',').map(x => x.trim()).filter(Boolean) })} isDisabled={p.ro} />
+              </LabeledInput></div>
+            )}
+          </div>
+          <FlexRow columnGap="18">
+            <Checkbox label="Required" value={c.required} onValueChange={v => set(i, { required: !!v })} isDisabled={p.ro} />
+            <Checkbox label="Show in table" value={c.inTable} onValueChange={v => set(i, { inTable: !!v })} isDisabled={p.ro} />
+            <FlexSpacer />
+            {!p.ro && <Button size="24" fill="none" color="critical" caption="Delete field" onClick={() => {
+              if (confirm(`Delete field "${c.label}"? Values already saved stay in the database but are hidden.`)) p.onChange(p.list.filter((_, j) => j !== i))
+            }} />}
+          </FlexRow>
+        </div>
+      ))}
+      {!p.ro && <div><Button color="accent" caption="+ Custom field" onClick={() => p.onChange([...p.list, { key: newCustomKey(), label: 'New field', type: 'text', options: [], required: false, inTable: false }])} /></div>}
+    </>
+  )
+}
