@@ -1,7 +1,7 @@
 // Small UUI wrappers used across the app.
 import { useMemo } from 'react'
 import { useArrayDataSource } from '@epam/uui-core'
-import { PickerInput, Badge } from '@epam/uui'
+import { PickerInput, Badge, Tooltip } from '@epam/uui'
 import { severity } from './model'
 
 type Opt = { id: string; name: string }
@@ -60,4 +60,15 @@ export function LinkText({ value }: { value: string }) {
     return <a href={value} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}>{short}</a>
   }
   return <span>{value}</span>
+}
+
+// Small "i" with the full text on hover / focus (e.g. the name behind an area code).
+export function InfoIcon({ text }: { text: string }) {
+  return (
+    <Tooltip content={text} placement="top">
+      <span className="info-i" tabIndex={0} role="img" aria-label={text}>
+        <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden><path d="M11 7h2v2h-2zm0 4h2v6h-2zm1-9a10 10 0 1 0 0 20 10 10 0 0 0 0-20m0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16" fill="currentColor" /></svg>
+      </span>
+    </Tooltip>
+  )
 }

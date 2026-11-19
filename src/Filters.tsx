@@ -6,6 +6,8 @@ import { FIELDS, type Req } from './model'
 import { getVal, type Config } from './config'
 import { check } from './rules'
 import { SHORT } from './RtmTable'
+import { areaName, areaOf } from './idScheme'
+import { InfoIcon } from './ui'
 
 export type FilterState = { fields: string[]; values: Record<string, string[]> }
 export const DEFAULT_FILTERS = ['type', 'status', 'priority', 'check']
@@ -15,12 +17,13 @@ const SKIP = new Set(['id', 'statement', 'acceptance', 'notes', 'spec_link', 'de
 
 export function filterableFields(cfg: Config): { key: string; label: string }[] {
   const out = [{ key: 'check', label: 'Traceability' }]
+  if (cfg.id.scheme?.on && cfg.id.scheme.areas.length) out.push({ key: 'area', label: 'Area' })
   for (const f of FIELDS) if (!SKIP.has(f.key) && cfg.fields[f.key].visible) out.push({ key: f.key, label: cfg.fields[f.key].label !== f.label ? cfg.fields[f.key].label : SHORT[f.key] ?? f.label })
   for (const c of cfg.custom) if (c.type !== 'long') out.push({ key: c.key, label: c.label })
   return out
 }
 
-export const valueOf = (r: Req, key: string, cfg: Config) => (key === 'check' ? check(r, cfg) : getVal(r, key)).trim()
+export const valueOf = (r: Req, key: string, cfg: Config) => (key === 'check' ? check(r, cfg) : key === 'area' ? areaOf(r.id, cfg.id.scheme) : getVal(r, key)).trim()
 
 export function applyFilters(rows: Req[], st: FilterState, cfg: Config): Req[] {
   const active = Object.entries(st.values).filter(([k, v]) => v.length && st.fields.includes(k))
@@ -31,7 +34,7 @@ export function applyFilters(rows: Req[], st: FilterState, cfg: Config): Req[] {
 export function optionsFor(rows: Req[], key: string, cfg: Config): string[] {
   const seen = new Set(rows.map(r => valueOf(r, key, cfg) || EMPTY))
   const f = FIELDS.find(x => x.key === key)
-  const listOrder: string[] = f?.list ? cfg.lists[f.list] : key === 'release' ? cfg.lists.release : cfg.custom.find(c => c.key === key)?.options ?? []
+  const listOrder: string[] = key === 'area' ? (cfg.id.scheme?.areas.map(a => a.code) ?? []) : f?.list ? cfg.lists[f.list] : key === 'release' ? cfg.lists.release : cfg.custom.find(c => c.key === key)?.options ?? []
   const ordered = listOrder.filter(v => seen.has(v))
   const rest = [...seen].filter(v => v !== EMPTY && !ordered.includes(v)).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
   return [...ordered, ...rest, ...(seen.has(EMPTY) ? [EMPTY] : [])]
@@ -49,7 +52,7 @@ export function ActiveFilters({ cfg, st, onChange }: { cfg: Config; st: FilterSt
       <span className="af-title">Filtered by</span>
       {active.map(k => (
         <span key={k} className="af-chip">
-          <b>{label(k)}:</b> {st.values[k].join(', ')}
+          <b>{label(k)}:</b> {st.values[k].map(v => k === 'area' && areaName(v, cfg.id.scheme) ? `${v} (${areaName(v, cfg.id.scheme)})` : v).join(', ')}
           <IconButton icon={() => <span className="fchip-x" aria-hidden>×</span>} onClick={() => remove(k)} rawProps={{ 'aria-label': `Remove ${label(k)} filter` }} />
         </span>
       ))}
@@ -80,6 +83,7 @@ export function HeaderFilter({ field, ctx, close }: { field: string; ctx: Filter
         {shown.map(v => (
           <div key={v} className="hfilter-item">
             <Checkbox label={v} value={sel.includes(v)} onValueChange={() => toggle(v)} />
+            {field === 'area' && areaName(v, cfg.id.scheme) && <InfoIcon text={areaName(v, cfg.id.scheme)} />}
             <span className="hfilter-count">{counts.get(v) ?? 0}</span>
           </div>
         ))}

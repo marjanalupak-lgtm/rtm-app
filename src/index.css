@@ -269,3 +269,10 @@ body.resizing { cursor: col-resize; user-select: none; }
 .rn-skipped summary { cursor: pointer; }
 .rn-skipped > div { max-height: 120px; overflow-y: auto; margin-top: 6px; }
 .rn-area { display: grid; gap: 6px; padding: 10px 12px; border-radius: 6px; background: #FFF6E5; border: 1px solid #F5C77A; }
+
+/* Area column + info icon */
+.area-cell { display: inline-flex; align-items: center; gap: 6px; }
+.info-i { display: inline-flex; color: var(--uui-text-tertiary, #8A8F98); cursor: help; border-radius: 50%; }
+.info-i:hover, .info-i:focus-visible { color: var(--uui-primary); outline: none; }
+.hfilter-item .info-i { margin-right: auto; margin-left: 4px; }
+.muted { color: var(--uui-text-tertiary, #8A8F98); }

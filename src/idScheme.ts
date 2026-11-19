@@ -92,3 +92,11 @@ export function sanitizeScheme(raw: unknown, types: string[]): IdScheme | undefi
     types: tr,
   }
 }
+
+// Area code of an ID (e.g. "ST" for ST-FR-001), only if it is one of the project's areas.
+export function areaOf(id: string, s?: IdScheme): string {
+  if (!s?.on) return ''
+  const a = parseId(id, s.sep)?.area
+  return a && s.areas.some(x => x.code === a) ? a : ''
+}
+export const areaName = (code: string, s?: IdScheme) => s?.areas.find(a => a.code === code)?.name ?? ''
