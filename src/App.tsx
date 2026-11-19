@@ -15,6 +15,8 @@ import { Dashboard } from './Dashboard'
 import { Guide } from './Guide'
 import { Editor } from './Editor'
 import { Select } from './ui'
+import { AiPanel } from './AiPanel'
+import type { Section } from './Settings'
 import { ActiveFilters, applyFilters, emptyFilters, type FilterState } from './Filters'
 import { ProjectsTab, ProjectEditor } from './Projects'
 import type { Project } from './store'
@@ -98,6 +100,8 @@ function Main({ email, onSignOut }: { email: string; onSignOut: () => void }) {
   const [filters, setFiltersState] = useState<FilterState>(emptyFilters())
   const [tableState, setTableState] = useTableState(pid)
   const fileRef = useRef<HTMLInputElement>(null)
+  const [aiOpen, setAiOpen] = useState(false)
+  const [settingsSec, setSettingsSec] = useState<Section | undefined>()
 
   const notify = useCallback((msg: string, ok = true) => {
     const N = ok ? SuccessNotification : ErrorNotification
@@ -123,6 +127,7 @@ function Main({ email, onSignOut }: { email: string; onSignOut: () => void }) {
   useEffect(() => { ls.set('rtm.tab', tab) }, [tab])
   useEffect(() => { ls.set('rtm.project', pid) }, [pid])
   const activeTab: Tab = projects && !project ? 'projects' : tab
+  useEffect(() => { if (activeTab !== 'settings') setSettingsSec(undefined) }, [activeTab])
 
   // Filters are remembered per project in this browser.
   useEffect(() => { try { setFiltersState({ ...emptyFilters(), ...JSON.parse(ls.get('rtm.filters.' + pid) || '{}') }) } catch { setFiltersState(emptyFilters()) } }, [pid])
@@ -230,6 +235,7 @@ function Main({ email, onSignOut }: { email: string; onSignOut: () => void }) {
             <Text color="secondary" fontSize="14">{filtered.length} of {rows.length}</Text>
             {project?.canEdit !== false && <Button fill="outline" color="secondary" caption="Import Excel" onClick={() => fileRef.current?.click()} />}
             <Button fill="outline" color="secondary" caption="Export Excel" onClick={() => import('./excel').then(m => m.exportExcel(filtered, project?.name ?? 'RTM', cfg))} />
+            {activeTab === 'rtm' && project?.canEdit !== false && <Button fill="outline" color="primary" caption="AI" onClick={() => setAiOpen(true)} rawProps={{ title: 'Turn notes, documents and transcripts into requirements with Claude' }} />}
             {project?.canEdit !== false && <Button color="primary" caption="+ Requirement" onClick={startNew} />}
             <input ref={fileRef} type="file" accept=".xlsx,.xlsm" hidden onChange={e => { const f = e.target.files?.[0]; if (f) onImport(f); e.target.value = '' }} />
           </FlexRow>
@@ -254,11 +260,13 @@ function Main({ email, onSignOut }: { email: string; onSignOut: () => void }) {
             )}
           </div>
         )}
-        {activeTab === 'settings' && project && <Settings projectId={pid} rows={rows} onRowsChanged={reload} config={cfg} isOwner={!!project.isOwner} onSaved={loadProjects} notify={notify} />}
+        {activeTab === 'settings' && project && <Settings key={settingsSec ?? 'x'} initialSection={settingsSec} projectId={pid} rows={rows} onRowsChanged={reload} config={cfg} isOwner={!!project.isOwner} onSaved={loadProjects} notify={notify} />}
         {activeTab === 'guide' && <Guide />}
       </main>
 
       {shown && !paneMode && renderEditor('drawer')}
+      {aiOpen && project && <AiPanel pid={pid} rows={rows} cfg={cfg} me={email} notify={notify} onApplied={reload}
+        onClose={() => setAiOpen(false)} openSettingsAi={() => { setAiOpen(false); setSettingsSec('ai'); setTab('settings') }} />}
       {editProject && (
         <ProjectEditor initial={editProject} me={email} onClose={() => setEditProject(null)}
           onSaved={async pr => { setEditProject(null); await loadProjects(); if (!editProject.id) { setPid(pr.id); setTab('rtm') } notify(`Project "${pr.name}" saved`) }}

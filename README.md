@@ -22,6 +22,20 @@ status rules and the **Traceability Check** formula. UI: EPAM UUI (Loveship).
 - **Excel**: import your RTM.xlsm/xlsx (matched by header names), export to .xlsx.
 - **Google Drive storage**: sign in with Google, projects are Sheets in your Drive, share with colleagues via Google; changes from others appear within ~20 s.
 
+## AI intake (Claude)
+
+The **AI** button (RTM tab) turns pasted text and files (PDF, images, Word, Excel, .txt/.md/.vtt/.srt/.csv) into proposed
+requirements: **new**, **update** (to an existing ID), **duplicate** or **conflict**, plus a summary, structure suggestions,
+open questions and next steps. Nothing is saved until you tick proposals and press **Apply**.
+
+- Each user adds their own Anthropic API key in **Settings › AI**. It is kept only in that browser
+  (optionally only until the tab closes) and is never written to the project, Drive or the repo.
+  Use a separate key with a monthly spend limit.
+- Each run sends your text, files and this project's requirements (ID, type, area, parent, statement) to Anthropic.
+- New requirements get IDs from Settings › IDs; updates may change only statement, priority, category and parent,
+  and add to acceptance criteria and notes. History shows them as `ai-intake` / `ai-update`.
+- Audio is not supported yet: paste a transcript instead.
+
 ## Run locally
     npm install
     npm run dev        # http://localhost:5173
