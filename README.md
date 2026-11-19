@@ -1,7 +1,6 @@
 # RTM tree — Requirements Traceability Matrix
 
-Web app for a team RTM. Built on the RTM.xlsm template: same 28 fields, dropdown lists,
-status rules and the **Traceability Check** formula. 
+Web app for a team RTM. Built on designed template.
 
 ## What it does
 - **Trash**: deleting a project moves it to trash (restorable, data kept). Permanent delete only from trash, after typing the project name; the database refuses to hard-delete projects not in trash.
