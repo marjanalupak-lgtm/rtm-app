@@ -1,11 +1,10 @@
 // Filter bar: quick filters (Type, Status, Priority, Traceability) plus "+ Filter" for any other field.
 // Options are the values that actually occur in the project; "(empty)" matches blank cells.
-import { useState, type ReactNode } from 'react'
+import { useState } from 'react'
 import { Button, Checkbox, FlexSpacer, IconButton, LinkButton, SearchInput, Text } from '@epam/uui'
 import { FIELDS, type Req } from './model'
 import { getVal, type Config } from './config'
 import { check } from './rules'
-import { MultiSelect, Select } from './ui'
 import { SHORT } from './RtmTable'
 
 export type FilterState = { fields: string[]; values: Record<string, string[]> }
@@ -38,30 +37,24 @@ export function optionsFor(rows: Req[], key: string, cfg: Config): string[] {
   return [...ordered, ...rest, ...(seen.has(EMPTY) ? [EMPTY] : [])]
 }
 
-export function FilterBar({ rows, cfg, st, onChange, right }: { rows: Req[]; cfg: Config; st: FilterState; onChange: (s: FilterState) => void; right?: ReactNode }) {
+// Summary of active filters (set from the column headers): "Filtered by: Priority: Critical, High ×" + Clear.
+export function ActiveFilters({ cfg, st, onChange }: { cfg: Config; st: FilterState; onChange: (s: FilterState) => void }) {
   const all = filterableFields(cfg)
+  const active = st.fields.filter(k => st.values[k]?.length && all.some(f => f.key === k))
+  if (!active.length) return null
   const label = (k: string) => all.find(f => f.key === k)?.label ?? k
-  const shown = st.fields.filter(k => all.some(f => f.key === k))
-  const addable = all.filter(f => !shown.includes(f.key))
-  const anyValue = shown.some(k => st.values[k]?.length)
-  const changed = anyValue || shown.join() !== DEFAULT_FILTERS.join()
-  const setVals = (k: string, v: string[]) => onChange({ ...st, values: { ...st.values, [k]: v } })
-  const remove = (k: string) => { const values = { ...st.values }; delete values[k]; onChange({ fields: st.fields.filter(x => x !== k), values }) }
-
+  const remove = (k: string) => { const values = { ...st.values }; delete values[k]; onChange({ ...st, values }) }
   return (
-    <div className="filter-bar" role="group" aria-label="Filters">
-      {shown.map(k => (
-        <div key={k} className={'fchip' + (st.values[k]?.length ? ' on' : '')}>
-          <span className="fchip-label">{label(k)}</span>
-          <div className="fchip-input"><MultiSelect value={st.values[k] ?? []} options={optionsFor(rows, k, cfg)} onChange={v => setVals(k, v)} placeholder="Any" /></div>
-          {!DEFAULT_FILTERS.includes(k) && <IconButton icon={() => <span className="fchip-x" aria-hidden>×</span>} onClick={() => remove(k)} rawProps={{ 'aria-label': `Remove ${label(k)} filter` }} />}
-        </div>
+    <div className="active-filters" role="group" aria-label="Active filters">
+      <span className="af-title">Filtered by</span>
+      {active.map(k => (
+        <span key={k} className="af-chip">
+          <b>{label(k)}:</b> {st.values[k].join(', ')}
+          <IconButton icon={() => <span className="fchip-x" aria-hidden>×</span>} onClick={() => remove(k)} rawProps={{ 'aria-label': `Remove ${label(k)} filter` }} />
+        </span>
       ))}
-      {addable.length > 0 && (
-        <div className="fadd"><Select value="" options={addable.map(f => f.key)} labels={Object.fromEntries(addable.map(f => [f.key, f.label]))} onChange={k => k && onChange({ ...st, fields: [...st.fields, k] })} placeholder="+ Filter" /></div>
-      )}
-      {changed && <Button size="30" fill="none" color="secondary" caption="Clear filters" onClick={() => onChange(emptyFilters())} rawProps={{ title: 'Filters also apply to the Dashboard and the Excel export' }} />}
-      {right && <><FlexSpacer />{right}</>}
+      <Button size="24" fill="none" color="secondary" caption="Clear filters" onClick={() => onChange(emptyFilters())} />
+      <Text fontSize="12" color="secondary">Applies to the table, Dashboard and Excel export.</Text>
     </div>
   )
 }

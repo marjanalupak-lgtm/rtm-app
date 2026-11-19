@@ -14,7 +14,7 @@ import { Dashboard } from './Dashboard'
 import { Guide } from './Guide'
 import { Editor } from './Editor'
 import { Select } from './ui'
-import { FilterBar, applyFilters, emptyFilters, type FilterState } from './Filters'
+import { ActiveFilters, applyFilters, emptyFilters, type FilterState } from './Filters'
 import { ProjectsTab, ProjectEditor } from './Projects'
 import type { Project } from './store'
 
@@ -154,13 +154,13 @@ function Main({ email }: { email: string }) {
             <FlexSpacer />
             <Text color="secondary" fontSize="14">{filtered.length} of {rows.length}</Text>
             {project?.canEdit !== false && <Button fill="outline" color="secondary" caption="Import Excel" onClick={() => fileRef.current?.click()} />}
+            {activeTab === 'rtm' && <Button fill="outline" color="secondary" caption={hiddenCols ? `Columns · ${hiddenCols} hidden` : 'Columns'} onClick={openColumns} />}
             <Button fill="outline" color="secondary" caption="Export Excel" onClick={() => import('./excel').then(m => m.exportExcel(filtered, project?.name ?? 'RTM', cfg))} />
             {project?.canEdit !== false && <Button color="primary" caption="+ Requirement" onClick={() => setEditing({ r: { ...emptyReq(nextIdFor(rows, cfg)), status: cfg.workflow.initial }, isNew: true })} />}
             <input ref={fileRef} type="file" accept=".xlsx,.xlsm" hidden onChange={e => { const f = e.target.files?.[0]; if (f) onImport(f); e.target.value = '' }} />
           </FlexRow>
         )}
-        {(activeTab === 'rtm' || activeTab === 'dashboard') && rows.length > 0 && <FilterBar rows={rows} cfg={cfg} st={filters} onChange={setFilters}
-          right={activeTab === 'rtm' ? <Button size="30" fill="outline" color="secondary" caption={hiddenCols ? `Columns · ${hiddenCols} hidden` : 'Columns'} onClick={openColumns} /> : undefined} />}
+        {(activeTab === 'rtm' || activeTab === 'dashboard') && <ActiveFilters cfg={cfg} st={filters} onChange={setFilters} />}
         {activeTab === 'projects' && projects && <ProjectsTab projects={projects} currentId={pid} onOpen={id => { setPid(id); setTab('rtm') }} onEdit={setEditProject} onChanged={loadProjects} notify={notify}
           onOpenShared={() => store.openSharedProject().then(async id => { if (id) { await loadProjects(); setPid(id); setTab('rtm'); notify('Shared project opened') } }).catch(e => notify(e.message, false))} />}
         {activeTab === 'dashboard' && <Dashboard rows={filtered} onOpen={open} />}
