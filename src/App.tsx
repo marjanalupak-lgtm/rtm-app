@@ -16,6 +16,7 @@ import { Guide } from './Guide'
 import { Editor } from './Editor'
 import { Select } from './ui'
 import { AiPanel } from './AiPanel'
+import type { Version } from './versions'
 import type { Section } from './Settings'
 import { ActiveFilters, applyFilters, emptyFilters, type FilterState } from './Filters'
 import { ProjectsTab, ProjectEditor } from './Projects'
@@ -93,6 +94,7 @@ function Main({ email, onSignOut }: { email: string; onSignOut: () => void }) {
   const [pid, setPid] = useState(() => ls.get('rtm.project'))
   const [editProject, setEditProject] = useState<Project | null>(null)
   const [rows, setRows] = useState<Req[]>([])
+  const [versions, setVersions] = useState<Version[]>([])
   // The open requirement belongs to one project and one tab; it is shown only there.
   type Editing = { r: Req; isNew: boolean; pid: string; tab: Tab }
   const [editing, setEditing] = useState<Editing | null>(null)
@@ -120,7 +122,8 @@ function Main({ email, onSignOut }: { email: string; onSignOut: () => void }) {
   useEffect(() => { store.setLabels(k => fieldLabel(cfg, k)) }, [cfg])
 
   const reload = useCallback(() => {
-    if (!pid) { setRows([]); return Promise.resolve() }
+    if (!pid) { setRows([]); setVersions([]); return Promise.resolve() }
+    store.listVersions(pid).then(setVersions).catch(() => setVersions([]))
     return store.listReqs(pid).then(setRows).catch(e => notify('Load failed: ' + e.message, false))
   }, [notify, pid])
   useEffect(() => { reload(); return pid ? store.subscribe(pid, reload) : undefined }, [reload, pid])
@@ -183,7 +186,7 @@ function Main({ email, onSignOut }: { email: string; onSignOut: () => void }) {
     return (
       <Editor key={(editing.isNew ? 'new:' : '') + editing.r.id} variant={variant} onDirty={d => { dirtyRef.current = d }}
         projectId={pid} readOnly={project?.canEdit === false} allRows={rows} onOpenOther={x => { dirtyRef.current = false; setEditing({ r: x, isNew: false, pid: editing.pid, tab: editing.tab }) }}
-        initial={editing.r} isNew={editing.isNew} existingIds={new Set(rows.map(r => r.id))}
+        versions={versions} initial={editing.r} isNew={editing.isNew} existingIds={new Set(rows.map(r => r.id))}
         onClose={() => { dirtyRef.current = false; setEditing(null) }}
         onSave={async r => {
           let prev = editing.isNew ? undefined : rows.find(x => x.id === editing.r.id)
