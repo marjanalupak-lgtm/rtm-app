@@ -41,3 +41,16 @@ describe('versions in the store (local)', () => {
     expect((await store.listVersions('p1'))[0].req_id).toBe('B-1')
   })
 })
+
+describe('versions — deleted requirements', () => {
+  beforeEach(() => mem.clear())
+  it('a deleted requirement takes its versions with it; a new one with the same ID starts at v1', async () => {
+    await store.saveReq('p1', r1, undefined)
+    await store.saveReq('p1', { ...r1, statement: 'new' }, r1)
+    await store.deleteReq('p1', { ...r1, statement: 'new' })
+    await store.saveReq('p1', { ...r1, statement: 'unrelated' }, undefined)
+    const vs = await store.listVersions('p1')
+    expect(vs.filter(v => v.req_id === 'A-1')).toEqual([])
+    expect(vs[0].req_id).toMatch(/^A-1 \(deleted /)
+  })
+})

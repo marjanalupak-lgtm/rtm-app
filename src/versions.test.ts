@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isNewVersion, versionOf, versionsFor, VERSIONED, type Version } from './versions'
+import { isNewVersion, numberVersions, splitCells, versionOf, versionsFor, VERSIONED, type Version } from './versions'
 import { emptyReq } from './model'
 
 const base = { ...emptyReq('ST-FR-001'), statement: 'Sign in with SSO', acceptance: 'Given…', type: 'Functional', parent: 'ST-SR-01', status: 'Draft' }
@@ -25,5 +25,18 @@ describe('requirement versions', () => {
   })
   it('lists one requirement\'s old versions, newest first', () => {
     expect(versionsFor('ST-FR-001', [v(1), v(1, 'OTHER-1'), v(2)]).map(x => x.version)).toEqual([2, 1])
+  })
+})
+
+describe('versions — review fixes', () => {
+  it('numbers versions by their order per requirement, ignoring stored numbers', () => {
+    const list = [v(1), v(1, 'OTHER-1'), v(3), v(3)]   // duplicate / gap from a failed save or a deleted row
+    expect(numberVersions(list).filter(x => x.req_id === 'ST-FR-001').map(x => x.version)).toEqual([1, 2, 3])
+  })
+  it('splits a long snapshot into cell-sized parts and joins them back', () => {
+    const json = 'x'.repeat(100_000)
+    const parts = splitCells(json)
+    expect(parts.every(p => p.length <= 45_000)).toBe(true)
+    expect(parts.join('')).toBe(json)
   })
 })

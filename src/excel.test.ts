@@ -28,7 +28,7 @@ describe('Excel export — versions', () => {
   })
   it('old versions go to their own sheet with every field', () => {
     const { head, rows } = versionSheet([v], defaultConfig(), ['PA-FR-001'])
-    expect(head.slice(0, 4)).toEqual(['Requirement ID', 'Version', 'Replaced at', 'Replaced by'])
+    expect(head.slice(0, 4)).toEqual(['Requirement ID', 'Version', 'Replaced at (UTC)', 'Replaced by'])
     expect(rows[0].slice(0, 2)).toEqual(['PA-FR-001', 'v1'])
     expect(rows[0]).toContain('old'); expect(rows[0]).toContain('TC-9')
   })

@@ -123,12 +123,16 @@ function Main({ email, onSignOut }: { email: string; onSignOut: () => void }) {
 
   const reload = useCallback(() => {
     if (!pid) { setRows([]); setVersions([]); return Promise.resolve() }
-    store.listVersions(pid).then(setVersions).catch(() => setVersions([]))
+    // A failed load keeps what we had (instead of showing every requirement as v1); a late answer for
+    // another project is dropped.
+    const forPid = pid
+    store.listVersions(pid).then(v => { if (ls.get('rtm.project') === forPid) setVersions(v) })
+      .catch(e => notify('Could not load versions: ' + e.message, false))
     return store.listReqs(pid).then(setRows).catch(e => notify('Load failed: ' + e.message, false))
   }, [notify, pid])
   useEffect(() => { reload(); return pid ? store.subscribe(pid, reload) : undefined }, [reload, pid])
   useEffect(() => { ls.set('rtm.tab', tab) }, [tab])
-  useEffect(() => { ls.set('rtm.project', pid) }, [pid])
+  useEffect(() => { ls.set('rtm.project', pid); setVersions([]) }, [pid])
   const activeTab: Tab = projects && !project ? 'projects' : tab
   useEffect(() => { if (activeTab !== 'settings') setSettingsSec(undefined) }, [activeTab])
 

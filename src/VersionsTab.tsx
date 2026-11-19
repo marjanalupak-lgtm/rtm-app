@@ -24,20 +24,20 @@ export function VersionsTab({ r, versions, cfg }: { r: Req; versions: Version[];
 
   return (
     <div className="versions">
-      <div className="ver-list" role="listbox" aria-label="Versions">
+      <ul className="ver-list" aria-label="Versions">
         {[current, ...versions.map(v => v.version)].map(n => {
           const v = versions.find(x => x.version === n)
           return (
-            <button key={n} role="option" aria-selected={n === sel} className={'ver-item' + (n === sel ? ' on' : '')} onClick={() => setSel(n)}>
+            <li key={n}><button aria-pressed={n === sel} className={'ver-item' + (n === sel ? ' on' : '')} onClick={() => setSel(n)}>
               <b>v{n}</b>{n === current ? ' · current' : ` · until ${new Date(v!.saved_at).toLocaleDateString()}`}
               {v && <span className="ver-by">{v.saved_by}</span>}
-            </button>
+            </button></li>
           )
         })}
-      </div>
+      </ul>
 
       {snap && (
-        <div className="ver-detail">
+        <div className="ver-detail" role="region" aria-label={`Version ${sel}`}>
           <Text fontSize="14" color="secondary">
             {sel === current ? 'Current version.' : `Version ${sel} of ${snap.id}${snap.id !== r.id ? ` (now ${r.id})` : ''} — replaced ${new Date(meta!.saved_at).toLocaleString()} by ${meta!.saved_by}.`}
           </Text>

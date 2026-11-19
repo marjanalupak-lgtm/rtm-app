@@ -15,3 +15,18 @@ export function isNewVersion(prev: Req | undefined, next: Req): boolean {
 
 export const versionsFor = (id: string, all: Version[]) => all.filter(v => v.req_id === id).sort((a, b) => b.version - a.version)
 export const versionOf = (id: string, all: Version[]) => all.filter(v => v.req_id === id).length + 1
+
+// Version numbers come from the order of saved snapshots per requirement (1, 2, 3…), not from the stored
+// column, so a duplicate or a deleted row can never make two versions share a number.
+export function numberVersions(list: Version[]): Version[] {
+  const seen = new Map<string, number>()
+  return list.map(v => { const n = (seen.get(v.req_id) ?? 0) + 1; seen.set(v.req_id, n); return { ...v, version: n } })
+}
+
+// A Google Sheets cell holds at most 50,000 characters; long snapshots are spread over several cells.
+export function splitCells(s: string, size = 45_000): string[] {
+  const out: string[] = []
+  for (let i = 0; i < s.length; i += size) out.push(s.slice(i, i + size))
+  return out.length ? out : ['']
+}
+export const deletedTag = (id: string, when: string) => `${id} (deleted ${when.slice(0, 10)})`

@@ -33,7 +33,7 @@ export function exportColumns(cfg: Config, versions: Version[] = []): Col[] {
 export function versionSheet(versions: Version[], cfg: Config, ids: string[]): { head: string[]; rows: string[][] } {
   const keep = new Set(ids)
   const fields = FIELDS.filter(f => cfg.fields[f.key].visible)
-  const head = ['Requirement ID', 'Version', 'Replaced at', 'Replaced by', ...fields.map(f => cfg.fields[f.key].label), 'Attachments & links']
+  const head = ['Requirement ID', 'Version', 'Replaced at (UTC)', 'Replaced by', ...fields.map(f => cfg.fields[f.key].label), 'Attachments & links']
   const rows = versions.filter(v => keep.has(v.req_id))
     .sort((a, b) => a.req_id.localeCompare(b.req_id, undefined, { numeric: true }) || a.version - b.version)
     .map(v => [v.req_id, 'v' + v.version, v.saved_at.slice(0, 16).replace('T', ' '), v.saved_by,
