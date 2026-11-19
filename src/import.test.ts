@@ -34,3 +34,15 @@ describe('parseWorkbook', () => {
     expect(() => parseWorkbook(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }))).toThrow(/Requirement ID/)
   })
 })
+
+describe('import ignores the exported Versions sheet', () => {
+  it('reads the RTM sheet even when a Versions sheet comes first', async () => {
+    const XLSX = await import('xlsx')
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Requirement ID', 'Version'], ['OLD-1', 'v1']]), 'Versions')
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Requirement ID*', 'User Story / Requirement*'], ['CUR-1', 'current']]), 'Data')
+    const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer
+    const { parseWorkbook } = await import('./import')
+    expect(parseWorkbook(buf).map(r => r.id)).toEqual(['CUR-1'])
+  })
+})

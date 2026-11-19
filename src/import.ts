@@ -18,6 +18,7 @@ export function parseWorkbook(data: ArrayBuffer, cfg: Config = defaultConfig()):
   const wb = XLSX.read(data, { type: 'array', cellDates: true, cellFormula: false, cellHTML: false, bookVBA: false })
   const names = [...wb.SheetNames].sort((a, b) => (b === 'RTM' ? 1 : 0) - (a === 'RTM' ? 1 : 0))  // "RTM" first
   for (const name of names) {
+    if (/^(versions|history|meta)$/i.test(name)) continue   // app's own sheets, never requirements
     const ws = wb.Sheets[name]
     if (!ws['!ref']) continue
     const range = XLSX.utils.decode_range(ws['!ref'])

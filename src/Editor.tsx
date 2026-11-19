@@ -7,6 +7,8 @@ import { check, allowedNext, gateFor } from './rules'
 import { history as loadHistory, uploadAttachment, removeAttachmentFile, newLink, type HistoryEntry } from './store'
 import { buildTree, levelOf } from './tree'
 import { Select, CheckBadge } from './ui'
+import { VersionsTab } from './VersionsTab'
+import { versionsFor, type Version } from './versions'
 import { nextSchemeId, parseId } from './idScheme'
 
 const GROUPS: Field['group'][] = ['Core', 'Traceability', 'Design', 'Governance', 'Verification']
@@ -14,10 +16,11 @@ const GROUPS: Field['group'][] = ['Core', 'Traceability', 'Design', 'Governance'
 export function Editor(p: {
   projectId: string; readOnly?: boolean; initial: Req; isNew: boolean; existingIds: Set<string>; allRows: Req[]
   onSave: (r: Req) => Promise<void>; onDelete: () => Promise<void>; onClose: () => void; onOpenOther: (r: Req) => void
-  variant?: 'drawer' | 'pane'; onDirty?: (dirty: boolean) => void
+  variant?: 'drawer' | 'pane'; onDirty?: (dirty: boolean) => void; versions?: Version[]
 }) {
   const [r, setR] = useState<Req>(p.initial)
-  const [tab, setTab] = useState<'form' | 'history'>('form')
+  const [tab, setTab] = useState<'form' | 'versions' | 'history'>('form')
+  const myVersions = p.isNew ? [] : versionsFor(p.initial.id, p.versions ?? [])
   const [hist, setHist] = useState<HistoryEntry[]>([])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -167,6 +170,7 @@ export function Editor(p: {
       <Panel background="surface-main" shadow cx={pane ? 'pane' : 'drawer'}>
         <FlexRow padding="24" vPadding="18" borderBottom columnGap="12">
           <Text fontSize="18" fontWeight="600">{p.isNew ? 'New requirement' : r.id}</Text>
+          {!p.isNew && <span className="ver-badge" title="Version">v{myVersions.length + 1}</span>}
           <CheckBadge check={gap} />
           <FlexSpacer />
           <IconButton icon={() => <span className="pane-x" aria-hidden>×</span>} onClick={close} rawProps={{ 'aria-label': 'Close details', title: 'Close' }} />
@@ -174,6 +178,7 @@ export function Editor(p: {
         {!p.isNew && (
           <FlexRow padding="24" borderBottom>
             <TabButton caption="Details" isActive={tab === 'form'} onClick={() => setTab('form')} size="48" />
+            <TabButton caption={`Versions${myVersions.length ? ` (${myVersions.length + 1})` : ''}`} isActive={tab === 'versions'} onClick={() => setTab('versions')} size="48" />
             <TabButton caption="History" isActive={tab === 'history'} onClick={() => setTab('history')} size="48" />
           </FlexRow>
         )}
@@ -246,7 +251,7 @@ export function Editor(p: {
                 </FlexRow>
               </>
             )}
-          </section></> : (
+          </section></> : tab === 'versions' ? <VersionsTab key={myVersions.length} r={p.initial} versions={myVersions} cfg={cfg} /> : (
             <div className="history">
               {!hist.length && <Text color="secondary">No changes recorded yet.</Text>}
               {hist.map((h, i) => (

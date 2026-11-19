@@ -8,25 +8,26 @@ import { CheckBadge, StatusBadge, LinkText } from './ui'
 import { HeaderFilter, isFilterable, type FilterCtx } from './Filters'
 import { areaName, areaOf } from './idScheme'
 import { InfoIcon } from './ui'
+import { versionOf, type Version } from './versions'
 
-type Row = Req & { check: string; area: string }
+type Row = Req & { check: string; area: string; version: number }
 const BADGE = new Set(['status', 'priority', 'delivery', 'design_status', 'test_exec', 'test_case_status'])
 
 // Reading order for the table: what it is → is it traced → where it stands → where it comes from → evidence.
-const ORDER = ['id', 'area', 'statement', 'check', 'type', 'status', 'priority', 'release', 'owner', 'delivery',
+const ORDER = ['id', 'version', 'area', 'statement', 'check', 'type', 'status', 'priority', 'release', 'owner', 'delivery',
   'parent', 'source', 'category', 'epic_id', 'epic_title', 'story_id', 'design_required', 'design_status', 'design_owner',
   'test_case', 'test_case_status', 'test_exec', 'defect', 'dependency', 'date_added', 'spec_link', 'acceptance', 'design_link', 'notes']
 
 // Short column captions (the full field name shows as a tooltip).
 export const SHORT: Record<string, string> = {
-  id: 'ID', area: 'Area', statement: 'Requirement', check: 'Traceability', type: 'Type', status: 'Status', priority: 'Priority',
+  id: 'ID', version: 'Ver', area: 'Area', statement: 'Requirement', check: 'Traceability', type: 'Type', status: 'Status', priority: 'Priority',
   release: 'Release', owner: 'Owner', delivery: 'Delivery', parent: 'Parent', source: 'Source', category: 'Category',
   epic_id: 'Epic ID', epic_title: 'Epic', story_id: 'Story', design_required: 'Design?', design_status: 'Design status',
   design_owner: 'Designer', test_case: 'Test case', test_case_status: 'Test status', test_exec: 'Test run', defect: 'Defect',
   dependency: 'Depends on', date_added: 'Added', spec_link: 'Spec', acceptance: 'Acceptance', design_link: 'Design link', notes: 'Notes',
 }
 const WIDTH: Record<string, number> = {
-  id: 120, area: 96, statement: 380, check: 204, type: 144, status: 160, priority: 132, release: 160, owner: 152, delivery: 160,
+  id: 120, version: 72, area: 96, statement: 380, check: 204, type: 144, status: 160, priority: 132, release: 160, owner: 152, delivery: 160,
   parent: 168, source: 168, category: 160, epic_id: 136, epic_title: 168, story_id: 140, design_required: 128, design_status: 172,
   design_owner: 150, test_case: 148, test_case_status: 152, test_exec: 140, defect: 136, dependency: 150, date_added: 128, notes: 220,
 }
@@ -66,6 +67,11 @@ export function columns(cfg: Config, fctx?: FilterCtx): DataColumnProps<Row, str
     add(f.key, fc.label, BADGE.has(f.key) ? 'badge' : f.link ? 'link' : 'text', fc.label !== defaults[f.key], !fc.inTable)
     if (f.key === 'statement') add('check', 'Traceability check', 'check', false, false)
   }
+  // Version: v1 until the requirement's meaning changes (see the Versions tab).
+  shown.set('version', {
+    key: 'version', caption: <span title="Version">Ver</span>, width: WIDTH.version, minWidth: 64, isSortable: true, alignSelf: 'center',
+    render: r => <span className={r.version > 1 ? 'ver-badge' : 'muted'}>v{r.version}</span>,
+  })
   // Area = first part of a structured ID (Settings › IDs). The "i" shows the area's name.
   if (cfg.id.scheme?.on && cfg.id.scheme.areas.length) {
     const sc = cfg.id.scheme
@@ -103,9 +109,9 @@ export function useTableState(projectId: string): [DataTableState, SetTable] {
   return [state, set]
 }
 
-export function RtmTable({ rows, onOpen, state, setState, fctx, selectedId }: { rows: Req[]; onOpen: (r: Req) => void; state: DataTableState; setState: SetTable; fctx?: FilterCtx; selectedId?: string }) {
+export function RtmTable({ rows, versions = [], onOpen, state, setState, fctx, selectedId }: { rows: Req[]; versions?: Version[]; onOpen: (r: Req) => void; state: DataTableState; setState: SetTable; fctx?: FilterCtx; selectedId?: string }) {
   const cfg = useConfig()
-  const items = useMemo<Row[]>(() => rows.map(r => ({ ...r, ...Object.fromEntries(cfg.custom.map(c => [c.key, getVal(r, c.key)])), check: check(r, cfg), area: areaOf(r.id, cfg.id.scheme) })), [rows, cfg])
+  const items = useMemo<Row[]>(() => rows.map(r => ({ ...r, ...Object.fromEntries(cfg.custom.map(c => [c.key, getVal(r, c.key)])), check: check(r, cfg), area: areaOf(r.id, cfg.id.scheme), version: versionOf(r.id, versions) })), [rows, cfg, versions])
   const cols = useMemo(() => columns(cfg, fctx), [cfg, fctx])
   const ds = useArrayDataSource<Row, string, unknown>({ items, getId: r => r.id }, [items])
   const view = ds.useView(state, setState as never, { getRowOptions: r => ({ onClick: () => onOpen(r), isSelectable: true }) })

@@ -4,6 +4,7 @@
 // - Local mode (no client ID): browser-only demo store.
 import { FIELDS, type Req, type Attachment } from './model'
 import { applyRename, type RenameMap } from './idRename'
+import { deletedTag, isNewVersion, numberVersions, splitCells, type Version } from './versions'
 import { normalize, type Config } from './config'
 import * as G from './google'
 
@@ -114,6 +115,62 @@ async function ensureHeader(id: string) {
   if ((h[0]?.length ?? 0) < REQ_HEAD.length) await putValues(id, `Requirements!A1:${LAST}1`, [REQ_HEAD])
   headerOk.add(id)
 }
+
+// Old versions of requirements live in sheet "Versions" (added on first use):
+// ID | Version | Saved at | Saved by | Snapshot JSON (split over E, F, … when long).
+const VER_HEAD = ['Requirement ID', 'Version', 'Saved at', 'Saved by', 'Snapshot (JSON)']
+const verSheet = new Map<string, number>()   // spreadsheet → time we last saw the sheet missing (0 = exists)
+async function hasVersionsSheet(id: string): Promise<boolean> {
+  const seen = verSheet.get(id)
+  if (seen === 0) return true
+  if (seen && Date.now() - seen < 60_000) return false
+  const s = await G.api<{ sheets: { properties: { title: string } }[] }>(`${G.SHEETS}/${id}${G.q({ fields: 'sheets.properties(title)' })}`)
+  const ok = s.sheets.some(x => x.properties.title === 'Versions')
+  verSheet.set(id, ok ? 0 : Date.now())
+  return ok
+}
+async function ensureVersionsSheet(id: string) {
+  if (await hasVersionsSheet(id)) return
+  const sheetId = 1_000_000 + Math.floor(Math.random() * 1_000_000_000)
+  try {
+    // Sheet and header in one request, so a version can never land in the header row.
+    await G.api(`${G.SHEETS}/${id}:batchUpdate`, { method: 'POST', body: JSON.stringify({ requests: [
+      { addSheet: { properties: { sheetId, title: 'Versions', gridProperties: { frozenRowCount: 1 } } } },
+      { updateCells: { start: { sheetId, rowIndex: 0, columnIndex: 0 }, fields: 'userEnteredValue',
+        rows: [{ values: VER_HEAD.map(h => ({ userEnteredValue: { stringValue: h } })) }] } },
+    ] }) })
+  } catch (e) {
+    if (!/already exists/i.test((e as Error).message)) throw e   // someone else just created it
+  }
+  verSheet.set(id, 0)
+}
+const rowToVersion = (x: string[]): Version | null => {
+  try { return { req_id: x[0] ?? '', version: Number(x[1]) || 1, saved_at: x[2] ?? '', saved_by: x[3] ?? '', snapshot: JSON.parse(x.slice(4).join('') || '{}') } } catch { return null }
+}
+async function readVersionRows(id: string): Promise<string[][]> {
+  return (await hasVersionsSheet(id)) ? getValues(id, 'Versions!A2:Z') : []
+}
+// Rows to add to "Versions" for requirements whose meaning is about to change, at explicit row numbers
+// (written together with the requirement rows). A snapshot equal to the latest one for that ID is not
+// archived again (e.g. a retry after a failed save).
+function versionWrites(existing: string[][], olds: Req[], who: string, now: string): { data: { range: string; values: string[][] }[]; numbers: Map<Req, number> } {
+  const data: { range: string; values: string[][] }[] = [], numbers = new Map<Req, number>()
+  const all = [...existing]
+  for (const o of olds) {
+    const mine = all.filter(x => (x[0] ?? '') === o.id)
+    const json = JSON.stringify(clean(o))
+    if (mine.length && mine[mine.length - 1].slice(4).join('') === json) { numbers.set(o, mine.length); continue }
+    const n = mine.length + 1, cells = [o.id, String(n), now, who, ...splitCells(json)]
+    const row = all.length + 2
+    data.push({ range: `Versions!A${row}:${col(cells.length - 1)}${row}`, values: [cells] })
+    all.push(cells); numbers.set(o, n)
+  }
+  return { data, numbers }
+}
+async function batchPut(id: string, data: { range: string; values: string[][] }[]) {
+  await G.api(`${G.SHEETS}/${id}/values:batchUpdate`, { method: 'POST', body: JSON.stringify({ valueInputOption: 'RAW', data }) })
+}
+const versionChange = (n: number): Change => ({ field: 'Version', from: 'v' + n, to: 'v' + (n + 1) })
 
 // Attachment files live in the uploader's Drive (folder RTM/Attachments) and are shared read-only with project members.
 let attFolder: string | null = null
@@ -267,14 +324,26 @@ const gdrive = {
     return (await getValues(id, `Requirements!A2:${LAST}`)).map(rowToReq).filter(r => r.id || r.statement)
   },
 
+  async listVersions(id: string): Promise<Version[]> {
+    if (!(await hasVersionsSheet(id))) return []
+    return numberVersions((await getValues(id, 'Versions!A2:Z')).map(rowToVersion).filter((v): v is Version => !!v && !!v.req_id))
+  },
+
   async saveReq(id: string, r: Req, prev: Req | undefined, h: HistoryEntry, who: string, now: string) {
     await ensureHeader(id)
     const rows = await getValues(id, `Requirements!A2:${LAST}`)
     const i = rows.findIndex(x => (x[0] ?? '').trim() === r.id.trim())
     if (!prev && i >= 0) throw new Error(`ID ${r.id} already exists. IDs are never reused.`)
     if (prev && i >= 0 && !same(rowToReq(rows[i]), prev)) throw new Error(`${r.id} was changed by someone else (${rows[i][REQ_COLS.length - 1] || 'unknown'}) since you opened it. Close the form to reload, then apply your change again.`)
+    const stored = i >= 0 ? rowToReq(rows[i]) : undefined
     const row = reqToRow(r, who, now)
-    if (i >= 0) await putValues(id, `Requirements!A${i + 2}:${LAST}${i + 2}`, [row])
+    if (prev && stored && isNewVersion(stored, r)) {
+      // Old version and new row in one write: either both land or neither does.
+      await ensureVersionsSheet(id)
+      const vw = versionWrites(await readVersionRows(id), [stored], who, now)
+      h.changes.push(versionChange(vw.numbers.get(stored)!))
+      await batchPut(id, [...vw.data, { range: `Requirements!A${i + 2}:${LAST}${i + 2}`, values: [row] }])
+    } else if (i >= 0) await putValues(id, `Requirements!A${i + 2}:${LAST}${i + 2}`, [row])
     else await appendValues(id, `Requirements!A1:${LAST}1`, [row])
     await appendValues(id, 'History!A1:E1', [[h.changed_at, h.changed_by, h.action, h.req_id, JSON.stringify(h.changes)]])
   },
@@ -286,6 +355,7 @@ const gdrive = {
     const table = rows.map(x => [...x, ...Array(Math.max(0, REQ_COLS.length - x.length)).fill('')])
     const index = new Map(table.map((x, i) => [(x[0] ?? '').trim(), i]))
     const hist: string[][] = []
+    const olds: { old: Req; hist: number; changes: Change[] }[] = []
     if (act.createOnly) for (const r of incoming) if (index.has(r.id.trim())) throw new Error(`${r.id} already exists — someone added it meanwhile. Reload and apply again.`)
     for (let r of incoming) {
       if (!r.id) continue
@@ -294,12 +364,19 @@ const gdrive = {
       if (prev && !r.attachments?.length) r = { ...r, attachments: prev.attachments }
       const changes = diff(prev, clean(r), labels)
       if (prev && !changes.length) continue
+      if (prev && isNewVersion(prev, r)) olds.push({ old: prev, hist: hist.length, changes })
       const row = reqToRow(r, who, now)
       if (i === undefined) { index.set(r.id.trim(), table.length); table.push(row) } else table[i] = row
       hist.push([now, who, prev ? act.update : act.create, r.id, JSON.stringify(changes)])
     }
     if (!hist.length) return 0
-    await putValues(id, `Requirements!A2:${LAST}${table.length + 1}`, table)
+    const tablePut = { range: `Requirements!A2:${LAST}${table.length + 1}`, values: table }
+    if (olds.length) {
+      await ensureVersionsSheet(id)
+      const vw = versionWrites(await readVersionRows(id), olds.map(o => o.old), who, now)
+      for (const o of olds) hist[o.hist][4] = JSON.stringify([...o.changes, versionChange(vw.numbers.get(o.old)!)])
+      await batchPut(id, [...vw.data, tablePut])
+    } else await putValues(id, tablePut.range, table)
     await appendValues(id, 'History!A1:E1', hist)
     return hist.length
   },
@@ -324,6 +401,10 @@ const gdrive = {
     await putValues(id, `Requirements!A2:${LAST}${table.length + 1}`, table)
     const old = await getValues(id, 'History!D2:D')
     if (old.some(x => map[x[0] ?? ''])) await putValues(id, `History!D2:D${old.length + 1}`, old.map(x => [map[x[0] ?? ''] ?? x[0] ?? '']))
+    if (await hasVersionsSheet(id)) {
+      const vids = await getValues(id, 'Versions!A2:A')
+      if (vids.some(x => map[x[0] ?? ''])) await putValues(id, `Versions!A2:A${vids.length + 1}`, vids.map(x => [map[x[0] ?? ''] ?? x[0] ?? '']))
+    }
     await appendValues(id, 'History!A1:E1', hist)
     return changes.length
   },
@@ -336,6 +417,11 @@ const gdrive = {
       { deleteDimension: { range: { sheetId: await reqSheetId(id), dimension: 'ROWS', startIndex: i + 1, endIndex: i + 2 } } },
     ] }) })
     await appendValues(id, 'History!A1:E1', [[h.changed_at, h.changed_by, h.action, h.req_id, '[]']])
+    // Its old versions stay for audit but no longer belong to the ID (which a new requirement may get).
+    if (await hasVersionsSheet(id)) {
+      const vids = await getValues(id, 'Versions!A2:A')
+      if (vids.some(x => x[0] === r.id)) await putValues(id, `Versions!A2:A${vids.length + 1}`, vids.map(x => [x[0] === r.id ? deletedTag(r.id, h.changed_at) : x[0] ?? '']))
+    }
   },
 
   async history(id: string, reqId?: string): Promise<HistoryEntry[]> {
@@ -366,7 +452,14 @@ const gdrive = {
 // ======================================================================
 // Local demo backend (browser only)
 // ======================================================================
-const LK = 'rtm.rows.v2', LH = 'rtm.history.v2', LP = 'rtm.projects.v1'
+const LK = 'rtm.rows.v2', LH = 'rtm.history.v2', LP = 'rtm.projects.v1', LV = 'rtm.versions.v1'
+type LocalVersion = Version & { project_id: string }
+function localArchive(projectId: string, old: Req, who: string, now: string): number {
+  const all = read<LocalVersion[]>(LV, [])
+  const n = all.filter(v => v.project_id === projectId && v.req_id === old.id).length + 1
+  write(LV, [...all, { project_id: projectId, req_id: old.id, version: n, saved_at: now, saved_by: who, snapshot: clean(old) }])
+  return n
+}
 const read = <T,>(k: string, d: T): T => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) as T : d } catch { return d } }
 const write = (k: string, v: unknown) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch { /* ignore */ } }
 type LocalReq = Req & { project_id: string }
@@ -449,6 +542,7 @@ export async function saveReq(projectId: string, r: Req, prev: Req | undefined, 
   if (GOOGLE) return gdrive.saveReq(projectId, row, prev, h, who, now)
   const rows = read<LocalReq[]>(LK, [])
   const i = rows.findIndex(x => x.project_id === projectId && x.id === row.id)
+  if (prev && i >= 0 && isNewVersion(rows[i], row)) h.changes.push(versionChange(localArchive(projectId, rows[i], who, now)))
   const full = { ...row, project_id: projectId, updated_at: now, updated_by: who }
   if (i >= 0) rows[i] = full; else rows.push(full)
   write(LK, rows)
@@ -497,8 +591,15 @@ export async function renameIds(projectId: string, map: RenameMap): Promise<numb
   for (const c of changes) Object.assign(c.before, c.after, { updated_at: now, updated_by: who })
   write(LK, all)
   const hist = read<HistoryEntry[]>(LH, []).map(h => h.project_id === projectId && map[h.req_id] ? { ...h, req_id: map[h.req_id] } : h)
+  write(LV, read<LocalVersion[]>(LV, []).map(v => v.project_id === projectId && map[v.req_id] ? { ...v, req_id: map[v.req_id] } : v))
   write(LH, [...changes.map(c => ({ project_id: projectId, req_id: c.after.id, changed_at: now, changed_by: who, action: c.after.id !== c.before.id ? 'rename' : 'update', changes: diff(c.before, c.after, labelFn) })), ...hist])
   return changes.length
+}
+
+// Old versions of requirements (newest last). Viewers can read them; nothing here writes.
+export async function listVersions(projectId: string): Promise<Version[]> {
+  if (GOOGLE) return gdrive.listVersions(projectId)
+  return numberVersions(read<LocalVersion[]>(LV, []).filter(v => v.project_id === projectId).map(({ project_id: _p, ...v }) => v))
 }
 
 export async function deleteReq(projectId: string, r: Req): Promise<void> {
@@ -506,6 +607,7 @@ export async function deleteReq(projectId: string, r: Req): Promise<void> {
   const h: HistoryEntry = { project_id: projectId, req_id: r.id, changed_at: new Date().toISOString(), changed_by: who, action: 'delete', changes: [] }
   if (GOOGLE) return gdrive.deleteReq(projectId, r, h)
   write(LK, read<LocalReq[]>(LK, []).filter(x => !(x.project_id === projectId && x.id === r.id)))
+  write(LV, read<LocalVersion[]>(LV, []).map(v => v.project_id === projectId && v.req_id === r.id ? { ...v, req_id: deletedTag(r.id, h.changed_at) } : v))
   write(LH, [h, ...read<HistoryEntry[]>(LH, [])])
 }
 

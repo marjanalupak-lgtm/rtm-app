@@ -16,6 +16,7 @@ import { Guide } from './Guide'
 import { Editor } from './Editor'
 import { Select } from './ui'
 import { AiPanel } from './AiPanel'
+import type { Version } from './versions'
 import type { Section } from './Settings'
 import { ActiveFilters, applyFilters, emptyFilters, type FilterState } from './Filters'
 import { ProjectsTab, ProjectEditor } from './Projects'
@@ -93,6 +94,7 @@ function Main({ email, onSignOut }: { email: string; onSignOut: () => void }) {
   const [pid, setPid] = useState(() => ls.get('rtm.project'))
   const [editProject, setEditProject] = useState<Project | null>(null)
   const [rows, setRows] = useState<Req[]>([])
+  const [versions, setVersions] = useState<Version[]>([])
   // The open requirement belongs to one project and one tab; it is shown only there.
   type Editing = { r: Req; isNew: boolean; pid: string; tab: Tab }
   const [editing, setEditing] = useState<Editing | null>(null)
@@ -120,12 +122,17 @@ function Main({ email, onSignOut }: { email: string; onSignOut: () => void }) {
   useEffect(() => { store.setLabels(k => fieldLabel(cfg, k)) }, [cfg])
 
   const reload = useCallback(() => {
-    if (!pid) { setRows([]); return Promise.resolve() }
+    if (!pid) { setRows([]); setVersions([]); return Promise.resolve() }
+    // A failed load keeps what we had (instead of showing every requirement as v1); a late answer for
+    // another project is dropped.
+    const forPid = pid
+    store.listVersions(pid).then(v => { if (ls.get('rtm.project') === forPid) setVersions(v) })
+      .catch(e => notify('Could not load versions: ' + e.message, false))
     return store.listReqs(pid).then(setRows).catch(e => notify('Load failed: ' + e.message, false))
   }, [notify, pid])
   useEffect(() => { reload(); return pid ? store.subscribe(pid, reload) : undefined }, [reload, pid])
   useEffect(() => { ls.set('rtm.tab', tab) }, [tab])
-  useEffect(() => { ls.set('rtm.project', pid) }, [pid])
+  useEffect(() => { ls.set('rtm.project', pid); setVersions([]) }, [pid])
   const activeTab: Tab = projects && !project ? 'projects' : tab
   useEffect(() => { if (activeTab !== 'settings') setSettingsSec(undefined) }, [activeTab])
 
@@ -183,7 +190,7 @@ function Main({ email, onSignOut }: { email: string; onSignOut: () => void }) {
     return (
       <Editor key={(editing.isNew ? 'new:' : '') + editing.r.id} variant={variant} onDirty={d => { dirtyRef.current = d }}
         projectId={pid} readOnly={project?.canEdit === false} allRows={rows} onOpenOther={x => { dirtyRef.current = false; setEditing({ r: x, isNew: false, pid: editing.pid, tab: editing.tab }) }}
-        initial={editing.r} isNew={editing.isNew} existingIds={new Set(rows.map(r => r.id))}
+        versions={versions} initial={editing.r} isNew={editing.isNew} existingIds={new Set(rows.map(r => r.id))}
         onClose={() => { dirtyRef.current = false; setEditing(null) }}
         onSave={async r => {
           let prev = editing.isNew ? undefined : rows.find(x => x.id === editing.r.id)
@@ -234,7 +241,7 @@ function Main({ email, onSignOut }: { email: string; onSignOut: () => void }) {
             <FlexSpacer />
             <Text color="secondary" fontSize="14">{filtered.length} of {rows.length}</Text>
             {project?.canEdit !== false && <Button fill="outline" color="secondary" caption="Import Excel" onClick={() => fileRef.current?.click()} />}
-            <Button fill="outline" color="secondary" caption="Export Excel" onClick={() => import('./excel').then(m => m.exportExcel(filtered, project?.name ?? 'RTM', cfg))} />
+            <Button fill="outline" color="secondary" caption="Export Excel" onClick={() => import('./excel').then(m => m.exportExcel(filtered, project?.name ?? 'RTM', cfg, versions))} />
             {activeTab === 'rtm' && project?.canEdit !== false && <Button fill="outline" color="primary" caption="AI" onClick={() => setAiOpen(true)} rawProps={{ title: 'Turn notes, documents and transcripts into requirements with Claude' }} />}
             {project?.canEdit !== false && <Button color="primary" caption="+ Requirement" onClick={startNew} />}
             <input ref={fileRef} type="file" accept=".xlsx,.xlsm" hidden onChange={e => { const f = e.target.files?.[0]; if (f) onImport(f); e.target.value = '' }} />
@@ -248,7 +255,7 @@ function Main({ email, onSignOut }: { email: string; onSignOut: () => void }) {
           <div className={'split' + (shown ? ' with-pane' : '')} ref={splitRef}>
             <div className="split-main">
               {view === 'list'
-                ? <RtmTable rows={filtered} onOpen={open} state={tableState} setState={setTableState} fctx={fctx} selectedId={shown?.isNew ? undefined : shown?.r.id} />
+                ? <RtmTable rows={filtered} versions={versions} onOpen={open} state={tableState} setState={setTableState} fctx={fctx} selectedId={shown?.isNew ? undefined : shown?.r.id} />
                 : <TreeTable rows={rows} q={q} filters={filters} onOpen={open} selectedId={shown?.isNew ? undefined : shown?.r.id} fold={fold} />}
             </div>
             {shown && (
