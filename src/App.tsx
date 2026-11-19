@@ -1,17 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useUuiContext } from '@epam/uui-core'
 import { Button, FlexRow, FlexSpacer, SearchInput, TabButton, Text, SuccessNotification, ErrorNotification, Badge } from '@epam/uui'
-import { emptyReq, severity, type Req } from './model'
+import { emptyReq, type Req } from './model'
 import { ConfigContext, defaultConfig, fieldLabel } from './config'
-import { check, nextIdFor } from './rules'
+import { nextIdFor } from './rules'
 import { Settings } from './Settings'
 import { TreeView } from './TreeView'
 import * as store from './store'
-import { RtmTable } from './RtmTable'
+import { RtmTable, useTableState, columns as tableColumns } from './RtmTable'
+import { ColumnsConfigurationModal } from '@epam/uui'
+import { useColumnsConfig } from '@epam/uui-core'
 import { Dashboard } from './Dashboard'
 import { Guide } from './Guide'
 import { Editor } from './Editor'
-import { MultiSelect, Select } from './ui'
+import { Select } from './ui'
+import { FilterBar, applyFilters, emptyFilters, type FilterState } from './Filters'
 import { ProjectsTab, ProjectEditor } from './Projects'
 import type { Project } from './store'
 
@@ -62,7 +65,7 @@ export default function App() {
 }
 
 function Main({ email }: { email: string }) {
-  const { uuiNotifications } = useUuiContext()
+  const { uuiNotifications, uuiModals } = useUuiContext()
   const [tab, setTab] = useState<Tab>(() => (ls.get('rtm.tab') as Tab) || 'rtm')
   const [projects, setProjects] = useState<Project[] | null>(null)
   const [pid, setPid] = useState(() => ls.get('rtm.project'))
@@ -70,9 +73,8 @@ function Main({ email }: { email: string }) {
   const [rows, setRows] = useState<Req[]>([])
   const [editing, setEditing] = useState<{ r: Req; isNew: boolean } | null>(null)
   const [q, setQ] = useState('')
-  const [fStatus, setFStatus] = useState<string[]>([])
-  const [fRelease, setFRelease] = useState<string[]>([])
-  const [fCheck, setFCheck] = useState<string[]>([])
+  const [filters, setFiltersState] = useState<FilterState>(emptyFilters())
+  const [tableState, setTableState] = useTableState(pid)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const notify = useCallback((msg: string, ok = true) => {
@@ -100,21 +102,22 @@ function Main({ email }: { email: string }) {
   useEffect(() => { ls.set('rtm.project', pid) }, [pid])
   const activeTab: Tab = projects && !project ? 'projects' : tab
 
-  const releases = useMemo(() => [...new Set([...cfg.lists.release, ...rows.map(r => r.release).filter(Boolean)])], [rows, cfg])
+  // Filters are remembered per project in this browser.
+  useEffect(() => { try { setFiltersState({ ...emptyFilters(), ...JSON.parse(ls.get('rtm.filters.' + pid) || '{}') }) } catch { setFiltersState(emptyFilters()) } }, [pid])
+  const setFilters = (f: FilterState) => { setFiltersState(f); ls.set('rtm.filters.' + pid, JSON.stringify(f)) }
   const filtered = useMemo(() => {
     const s = q.toLowerCase()
-    return rows.filter(r => {
-      if (s && ![...Object.values(r), ...Object.values(r.extra ?? {})].some(v => typeof v !== 'object' && String(v ?? '').toLowerCase().includes(s))) return false
-      if (fStatus.length && !fStatus.includes(r.status)) return false
-      if (fRelease.length && !fRelease.includes(r.release)) return false
-      if (fCheck.length) {
-        const sev = severity(check(r, cfg))
-        const label = sev === 'ok' ? 'Covered' : sev === 'bad' ? 'Critical gap' : sev === 'warn' ? 'Gap' : ''
-        if (!fCheck.includes(label)) return false
-      }
-      return true
-    })
-  }, [rows, q, fStatus, fRelease, fCheck, cfg])
+    const searched = s ? rows.filter(r => [...Object.values(r), ...Object.values(r.extra ?? {})].some(v => typeof v !== 'object' && String(v ?? '').toLowerCase().includes(s))) : rows
+    return applyFilters(searched, filters, cfg)
+  }, [rows, q, filters, cfg])
+
+  // Column chooser (UUI columns configuration modal): show/hide, reorder, pin.
+  const allCols = useMemo(() => tableColumns(cfg), [cfg])
+  const { config: colConfig, defaultConfig: colDefaults } = useColumnsConfig(allCols, tableState.columnsConfig ?? {})
+  const hiddenCols = Object.values(colConfig).filter(c => !c.isVisible).length
+  const openColumns = () => uuiModals.show<typeof colConfig>(props => (
+    <ColumnsConfigurationModal {...props} columns={allCols} columnsConfig={colConfig} defaultConfig={colDefaults} />
+  )).then(c => setTableState(s => ({ ...s, columnsConfig: c }))).catch(() => {})
 
   const onImport = async (file: File) => {
     try {
@@ -147,11 +150,6 @@ function Main({ email }: { email: string }) {
         {(activeTab === 'rtm' || activeTab === 'dashboard' || activeTab === 'tree') && (
           <FlexRow columnGap="12" cx="toolbar" rawProps={{ role: 'toolbar' }}>
             <div className="search"><SearchInput value={q} onValueChange={v => setQ(v ?? '')} placeholder="Search all fields" debounceDelay={150} /></div>
-            {activeTab === 'rtm' && <>
-              <div className="filter"><MultiSelect value={fStatus} options={cfg.lists.status} onChange={setFStatus} placeholder="Status" /></div>
-              <div className="filter"><MultiSelect value={fRelease} options={releases} onChange={setFRelease} placeholder="Release" /></div>
-              <div className="filter"><MultiSelect value={fCheck} options={['Covered', 'Gap', 'Critical gap']} onChange={setFCheck} placeholder="Traceability" /></div>
-            </>}
             <FlexSpacer />
             <Text color="secondary" fontSize="14">{filtered.length} of {rows.length}</Text>
             {project?.canEdit !== false && <Button fill="outline" color="secondary" caption="Import Excel" onClick={() => fileRef.current?.click()} />}
@@ -160,10 +158,12 @@ function Main({ email }: { email: string }) {
             <input ref={fileRef} type="file" accept=".xlsx,.xlsm" hidden onChange={e => { const f = e.target.files?.[0]; if (f) onImport(f); e.target.value = '' }} />
           </FlexRow>
         )}
+        {(activeTab === 'rtm' || activeTab === 'dashboard') && rows.length > 0 && <FilterBar rows={rows} cfg={cfg} st={filters} onChange={setFilters}
+          right={activeTab === 'rtm' ? <Button size="30" fill="outline" color="secondary" caption={hiddenCols ? `Columns · ${hiddenCols} hidden` : 'Columns'} onClick={openColumns} /> : undefined} />}
         {activeTab === 'projects' && projects && <ProjectsTab projects={projects} currentId={pid} onOpen={id => { setPid(id); setTab('rtm') }} onEdit={setEditProject} onChanged={loadProjects} notify={notify}
           onOpenShared={() => store.openSharedProject().then(async id => { if (id) { await loadProjects(); setPid(id); setTab('rtm'); notify('Shared project opened') } }).catch(e => notify(e.message, false))} />}
         {activeTab === 'dashboard' && <Dashboard rows={filtered} onOpen={open} />}
-        {activeTab === 'rtm' && <RtmTable rows={filtered} onOpen={open} />}
+        {activeTab === 'rtm' && <RtmTable rows={filtered} onOpen={open} state={tableState} setState={setTableState} />}
         {activeTab === 'tree' && <TreeView rows={rows} onOpen={open} q={q} />}
         {activeTab === 'settings' && project && <Settings projectId={pid} config={cfg} isOwner={!!project.isOwner} onSaved={loadProjects} notify={notify} />}
         {activeTab === 'guide' && <Guide />}

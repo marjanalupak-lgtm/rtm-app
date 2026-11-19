@@ -191,3 +191,14 @@ a:hover { text-decoration: underline; }
 .att-add { margin-top: 10px; flex-wrap: wrap; row-gap: 8px; }
 .att-name-in { width: 240px; }
 @media (max-width: 700px) { .links-grid { grid-template-columns: 1fr; } .att-meta { display: none; } .att-name-in { width: 100%; } }
+
+/* Filter bar */
+.filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: -6px 0 16px; }
+.fchip { display: flex; align-items: center; gap: 6px; background: var(--uui-surface-main, #fff); border: 1px solid var(--uui-divider, #E1E3EB); border-radius: 8px; padding: 3px 4px 3px 10px; }
+.fchip.on { border-color: var(--uui-primary-50, #773CEC); box-shadow: 0 0 0 1px var(--uui-primary-50, #773CEC) inset; }
+.fchip-label { font-size: 12px; font-weight: 600; color: var(--uui-text-secondary); white-space: nowrap; text-transform: uppercase; letter-spacing: .4px; }
+.fchip-input { width: 190px; }
+.fchip-input .uui-input-box { border-color: transparent; }
+.fchip-x { font-size: 18px; line-height: 1; padding: 0 4px; color: var(--uui-text-secondary); }
+.fadd { width: 150px; }
+@media (max-width: 700px) { .fchip { width: 100%; } .fchip-input { flex: 1; width: auto; } .fadd { width: 100%; } }
