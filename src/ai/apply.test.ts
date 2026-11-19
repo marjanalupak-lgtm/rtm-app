@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cardProblem, planApply, type Defaults } from './apply'
+import { cardProblem, cardWarnings, planApply, type Defaults } from './apply'
 import type { Proposal } from './prompt'
 import { defaultConfig } from '../config'
 import { emptyReq } from '../model'
@@ -52,5 +52,29 @@ describe('AI apply planner', () => {
     expect(cardProblem(p({ type: 'Epic' }), rows, cfg)).toBe('missing type')
     expect(cardProblem(p({ kind: 'update', existingId: 'NOPE-1' }), rows, cfg)).toBe('unknown requirement')
     expect(cardProblem(p({}), rows, cfg)).toBeNull()
+  })
+})
+
+describe('AI apply planner — review fixes', () => {
+  it('updates to acceptance and notes add to the existing text instead of replacing it', () => {
+    const base = [{ ...rows[0], acceptance: 'Given A', notes: 'n1' }]
+    const r = planApply([p({ kind: 'update', existingId: 'ST-FR-089', changes: { acceptance: 'Given B', notes: 'n2' } })], base, cfg, d)
+    expect(r.updates[0].next.acceptance).toBe('Given A\nGiven B')
+    expect(r.updates[0].next.notes).toBe('n1\nn2')
+  })
+  it('an addition already present is not added twice', () => {
+    const base = [{ ...rows[0], acceptance: 'Given A' }]
+    expect(planApply([p({ kind: 'update', existingId: 'ST-FR-089', changes: { acceptance: 'Given A' } })], base, cfg, d).updates[0].next.acceptance).toBe('Given A')
+  })
+  it('warns before Apply about parents that are not in the batch or do not exist', () => {
+    const cards = [p({ tmpId: 'tmp-1' }), p({ tmpId: 'tmp-2', parent: 'tmp-1, tmp-9' }), p({ tmpId: 'tmp-3', parent: 'ST-SR-99 Something' })]
+    expect(cardWarnings(cards[1], rows, ['tmp-1'])).toEqual(['parent tmp-9 is not in this batch'])
+    expect(cardWarnings(cards[1], rows, [])).toEqual(['parent tmp-1 is not in this batch', 'parent tmp-9 is not in this batch'])
+    expect(cardWarnings(cards[2], rows, [])).toEqual(['parent ST-SR-99 not found'])
+    expect(cardWarnings(p({ parent: 'ST-SR-01 Staff' }), rows, [])).toEqual([])
+  })
+  it('an update with nothing it may change is a problem', () => {
+    expect(cardProblem(p({ kind: 'update', existingId: 'ST-FR-089', changes: {} }), rows, cfg)).toBe('no changes')
+    expect(cardProblem(p({ kind: 'update', existingId: 'ST-FR-089', changes: { type: 'Business' } }), rows, cfg)).toBe('no changes')
   })
 })

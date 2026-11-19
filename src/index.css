@@ -300,3 +300,5 @@ body.resizing { cursor: col-resize; user-select: none; }
 .ai-existing { font-style: italic; }
 .ai-foot { background: var(--uui-surface-main, #fff); }
 @media (max-width: 640px) { .ai-overlay { padding: 0; } .ai-panel { border-radius: 0; } }
+.ai-was { color: var(--uui-text-secondary); }
+.ai-warn { color: #B26B00 !important; }

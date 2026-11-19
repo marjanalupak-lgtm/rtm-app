@@ -21,10 +21,9 @@ describe('AI prompt', () => {
     expect(p).toBe(buildSystemPrompt([...rows].reverse(), cfg))
     expect(p.indexOf('ST-FR-001 |')).toBeLessThan(p.indexOf('ST-FR-002 |'))
   })
-  it('cuts long statements to 300 characters', () => {
+  it('sends statements in full (an update replaces the statement, so Claude must see all of it)', () => {
     const p = buildSystemPrompt([r('X-1', 'Functional', '', 'a'.repeat(500))], cfg)
-    const line = p.split('\n').find(l => l.startsWith('X-1 |'))!
-    expect(line.split(' | ')[4].length).toBeLessThanOrEqual(300)
+    expect(p.split('\n').find(l => l.startsWith('X-1 |'))!.split(' | ')[4].length).toBe(500)
   })
   it('includes types, areas with names and the ID rule', () => {
     const p = buildSystemPrompt(rows, cfg)

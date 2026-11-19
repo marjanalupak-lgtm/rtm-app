@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import Anthropic from '@anthropic-ai/sdk'
-import { AiError, clearKey, explain, getKey, handleResponse, setKey, toAiError } from './client'
+import { AiError, clearKey, describe as describe_, explain, getKey, handleResponse, setKey, toAiError } from './client'
 
 const store = new Map<string, string>()
 const fake = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) }
@@ -44,5 +44,16 @@ describe('AI response', () => {
   })
   it('reads the JSON from the text block', () => {
     expect(handleResponse({ stop_reason: 'end_turn', stop_details: null, content: [{ type: 'thinking' }, { type: 'text', text: ok }] }).summary).toBe('s')
+  })
+})
+
+describe('AI errors — review fixes', () => {
+  it('a 400 about size or pages is too-large and keeps the detail', () => {
+    const e = toAiError(as(Anthropic.BadRequestError, { status: 400, message: '400 prompt is too long: 1200000 tokens > 1000000 maximum' }))
+    expect(e.kind).toBe('too-large'); expect(e.message).toContain('prompt is too long')
+    expect(toAiError(as(Anthropic.BadRequestError, { status: 400, message: 'A maximum of 600 PDF pages may be provided.' })).kind).toBe('too-large')
+  })
+  it('other API errors keep their detail for the user', () => {
+    expect(describe_(toAiError(as(Anthropic.NotFoundError, { status: 404, message: 'model: not found' })))).toContain('model: not found')
   })
 })

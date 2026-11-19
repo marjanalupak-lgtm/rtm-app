@@ -279,13 +279,14 @@ const gdrive = {
     await appendValues(id, 'History!A1:E1', [[h.changed_at, h.changed_by, h.action, h.req_id, JSON.stringify(h.changes)]])
   },
 
-  async bulkSave(id: string, incoming: Req[], labels?: (k: string) => string, act: { create: string; update: string } = { create: 'import', update: 'import-update' }): Promise<number> {
+  async bulkSave(id: string, incoming: Req[], labels?: (k: string) => string, act: { create: string; update: string; createOnly?: boolean } = { create: 'import', update: 'import-update' }): Promise<number> {
     await ensureHeader(id)
     const who = G.currentEmail() ?? '', now = new Date().toISOString()
     const rows = await getValues(id, `Requirements!A2:${LAST}`)
     const table = rows.map(x => [...x, ...Array(Math.max(0, REQ_COLS.length - x.length)).fill('')])
     const index = new Map(table.map((x, i) => [(x[0] ?? '').trim(), i]))
     const hist: string[][] = []
+    if (act.createOnly) for (const r of incoming) if (index.has(r.id.trim())) throw new Error(`${r.id} already exists — someone added it meanwhile. Reload and apply again.`)
     for (let r of incoming) {
       if (!r.id) continue
       const i = index.get(r.id.trim())
@@ -454,8 +455,12 @@ export async function saveReq(projectId: string, r: Req, prev: Req | undefined, 
   write(LH, [h, ...read<HistoryEntry[]>(LH, [])].slice(0, 5000))
 }
 
-export async function bulkSave(projectId: string, rows: Req[], existing: Req[], act: { create: string; update: string } = { create: 'import', update: 'import-update' }): Promise<number> {
+export async function bulkSave(projectId: string, rows: Req[], existing: Req[], act: { create: string; update: string; createOnly?: boolean } = { create: 'import', update: 'import-update' }): Promise<number> {
   if (GOOGLE) return gdrive.bulkSave(projectId, rows, labelFn, act)
+  if (act.createOnly) {
+    const ids = new Set(read<LocalReq[]>(LK, []).filter(r => r.project_id === projectId).map(r => r.id))
+    for (const r of rows) if (ids.has(r.id)) throw new Error(`${r.id} already exists — someone added it meanwhile. Reload and apply again.`)
+  }
   const byId = new Map(existing.map(r => [r.id, r]))
   let n = 0
   for (const r of rows) {
@@ -472,7 +477,7 @@ export async function bulkSave(projectId: string, rows: Req[], existing: Req[], 
 // someone else since the analysis is skipped and reported, the rest still apply).
 export async function applyIntake(projectId: string, plan: { creates: Req[]; updates: { prev: Req; next: Req }[] }, existing: Req[]):
   Promise<{ created: number; updated: number; skipped: { id: string; why: string }[] }> {
-  const created = plan.creates.length ? await bulkSave(projectId, plan.creates, existing, { create: 'ai-intake', update: 'ai-intake' }) : 0
+  const created = plan.creates.length ? await bulkSave(projectId, plan.creates, existing, { create: 'ai-intake', update: 'ai-intake', createOnly: true }) : 0
   let updated = 0
   const skipped: { id: string; why: string }[] = []
   for (const u of plan.updates) {

@@ -19,3 +19,12 @@ describe('applyIntake (local store)', () => {
     expect(actions).toContain('ai-intake'); expect(actions).toContain('ai-update')
   })
 })
+
+describe('applyIntake never overwrites an existing row', () => {
+  beforeEach(() => mem.clear())
+  it('refuses a new row whose ID already exists (someone added it meanwhile)', async () => {
+    await store.saveReq('p1', { ...emptyReq('A-2'), statement: 'teammate' }, undefined)
+    await expect(store.applyIntake('p1', { creates: [{ ...emptyReq('A-2'), statement: 'ai' }], updates: [] }, [])).rejects.toThrow(/A-2 already exists/)
+    expect((await store.listReqs('p1'))[0].statement).toBe('teammate')
+  })
+})

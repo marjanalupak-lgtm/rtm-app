@@ -39,6 +39,8 @@ const TEXT: Record<AiErrorKind, string> = {
   'other': 'Something went wrong.',
 }
 export const explain = (k: AiErrorKind) => TEXT[k]
+// Message for the user: the plain explanation plus the API's own detail when it helps.
+export const describe = (e: AiError) => explain(e.kind) + (['other', 'too-large', 'refused'].includes(e.kind) && e.message !== e.kind ? ` (${e.message})` : '')
 
 export function toAiError(e: unknown): AiError {
   if (e instanceof AiError) return e
@@ -48,6 +50,7 @@ export function toAiError(e: unknown): AiError {
   if (e instanceof Anthropic.RateLimitError) return new AiError('busy')
   if (e instanceof Anthropic.APIError) {
     if (e.status === 413) return new AiError('too-large')
+    if (e.status === 400 && /too long|too large|exceed|maximum|pages/i.test(e.message)) return new AiError('too-large', e.message)
     if (e.status === 529 || (e.status ?? 0) >= 500) return new AiError('busy')
     return new AiError('other', e.message)
   }

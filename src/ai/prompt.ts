@@ -50,7 +50,7 @@ const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim()
 export function buildSystemPrompt(rows: Req[], cfg: Config): string {
   const sc = cfg.id.scheme?.on ? cfg.id.scheme : undefined
   const sorted = [...rows].sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }))
-  const lines = sorted.map(r => [r.id, r.type, areaOf(r.id, sc), oneLine(r.parent), oneLine(r.statement).slice(0, 300)].join(' | '))
+  const lines = sorted.map(r => [r.id, r.type, areaOf(r.id, sc), oneLine(r.parent), oneLine(r.statement)].join(' | '))
   const typeRules = cfg.lists.type.map(t => {
     const rule = sc?.types[t]
     return `- ${t}${rule ? ` (code ${rule.code}${rule.area ? ', needs an area' : ', no area'})` : ''}`

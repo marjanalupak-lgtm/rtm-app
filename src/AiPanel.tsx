@@ -7,8 +7,8 @@ import type { Config } from './config'
 import { Select } from './ui'
 import * as store from './store'
 import { ACCEPT, checkSize, fileToBlocks, type Block } from './ai/inputs'
-import { AiError, explain, getKey, runIntake } from './ai/client'
-import { cardProblem, planApply } from './ai/apply'
+import { AiError, describe, explain, getKey, runIntake } from './ai/client'
+import { APPENDED, allowedChanges, cardProblem, cardWarnings, planApply } from './ai/apply'
 import type { AiResult, Proposal, ProposalKind } from './ai/prompt'
 
 const KIND: Record<ProposalKind, { label: string; color: 'success' | 'info' | 'neutral' | 'warning' }> = {
@@ -51,7 +51,7 @@ export function AiPanel(p: { pid: string; rows: Req[]; cfg: Config; me: string; 
       setRes(r); setCards(r.proposals)
       setTicked(new Set(r.proposals.map((x, i) => (x.kind === 'new' || x.kind === 'update') && !cardProblem(x, rows, cfg) ? i : -1).filter(i => i >= 0)))
     } catch (e) {
-      setErr(e instanceof AiError ? explain(e.kind) + (e.kind === 'refused' && e.message !== 'refused' ? ` (${e.message})` : '') : (e as Error).message)
+      setErr(e instanceof AiError ? describe(e) : (e as Error).message)
     } finally { setBusy(''); abort.current = null }
   }
 
@@ -61,20 +61,23 @@ export function AiPanel(p: { pid: string; rows: Req[]; cfg: Config; me: string; 
   const apply = async () => {
     setBusy('Saving…'); setErr('')
     try {
-      const plan = planApply(chosen.map(i => cards[i]), rows, cfg, { ...defs, date: today() })
-      const r = await store.applyIntake(p.pid, plan, rows)
+      // Plan against the sheet as it is now, so new IDs can't collide with rows a teammate just added.
+      const fresh = await store.listReqs(p.pid)
+      const plan = planApply(chosen.map(i => cards[i]), fresh, cfg, { ...defs, date: today() })
+      const r = await store.applyIntake(p.pid, plan, fresh)
       await p.onApplied()
       const extra = [...r.skipped.map(s => `${s.id} skipped: ${s.why}`), ...plan.warnings]
-      p.notify(`Added ${r.created}, updated ${r.updated}` + (extra.length ? ` — ${extra.join('; ')}` : ''), !r.skipped.length)
+      p.notify(`Added ${r.created}, updated ${r.updated}` + (extra.length ? ` — ${extra.join('; ')}` : ''), !extra.length)
       p.onClose()
     } catch (e) { setErr('Save failed: ' + (e as Error).message) } finally { setBusy('') }
   }
   const close = () => {
-    if (busy && abort.current) abort.current.abort()
     if ((res || text.trim() || files.length) && !confirm('Close the AI panel? Your input and results here will be lost.')) return
+    abort.current?.abort()
     p.onClose()
   }
 
+  const batchTmp = [...ticked].map(i => cards[i]).filter(c => c?.kind === 'new' && c.tmpId).map(c => c.tmpId)
   const counts = (k: ProposalKind) => cards.filter(c => c.kind === k).length
   const shown = cards.map((c, i) => [c, i] as const).filter(([c]) => filter === 'all' || c.kind === filter)
   const areaOpts = sc?.areas.map(a => a.code) ?? []
@@ -131,6 +134,7 @@ export function AiPanel(p: { pid: string; rows: Req[]; cfg: Config; me: string; 
                 const problem = cardProblem(c, rows, cfg)
                 const ex = c.existingId ? byId.get(c.existingId) : undefined
                 const needsArea = !!sc?.types[c.type]?.area
+                const warn = ticked.has(i) && !problem ? cardWarnings(c, rows, batchTmp) : []
                 return (
                   <div key={i} className={'ai-card k-' + c.kind + (ticked.has(i) && !problem ? ' on' : '')}>
                     <FlexRow columnGap="12">
@@ -154,9 +158,14 @@ export function AiPanel(p: { pid: string; rows: Req[]; cfg: Config; me: string; 
                       </div>
                     )}
                     {c.kind !== 'new' && ex && <Text fontSize="14" color="secondary" cx="ai-existing">Now: {ex.statement}</Text>}
-                    {c.kind !== 'new' && Object.keys(c.changes).length > 0 && (
-                      <ul className="ai-changes">{Object.entries(c.changes).map(([k, v]) => <li key={k}><b>{k}</b> → {v}</li>)}</ul>
+                    {c.kind !== 'new' && ex && allowedChanges(c).length > 0 && (
+                      <ul className="ai-changes">{allowedChanges(c).map(k => {
+                        const cur = String((ex as unknown as Record<string, string>)[k] ?? '')
+                        const adds = (APPENDED as readonly string[]).includes(k)
+                        return <li key={k}><b>{k}</b>{adds ? ' — adds: ' : ' → '}{c.changes[k]}{!adds && <span className="ai-was"> (now: {cur || '—'})</span>}</li>
+                      })}</ul>
                     )}
+                    {warn.map(w => <Text key={w} fontSize="12" cx="ai-warn">⚠ {w}</Text>)}
                     {c.kind !== 'new' && c.statement && <Text fontSize="14">{c.statement}</Text>}
                     <Text fontSize="12" color="secondary">{c.reason}{c.source ? ` — source: ${c.source}` : ''}</Text>
                   </div>
