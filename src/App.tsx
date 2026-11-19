@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useUuiContext } from '@epam/uui-core'
-import { Button, FlexRow, FlexSpacer, SearchInput, TabButton, Text, SuccessNotification, ErrorNotification, Badge } from '@epam/uui'
+import { Button, FlexRow, FlexSpacer, MultiSwitch, SearchInput, TabButton, Text, SuccessNotification, ErrorNotification, Badge } from '@epam/uui'
 import { emptyReq, type Req } from './model'
 import { ConfigContext, defaultConfig, fieldLabel } from './config'
 import { nextIdFor } from './rules'
@@ -18,8 +18,9 @@ import { ActiveFilters, applyFilters, emptyFilters, type FilterState } from './F
 import { ProjectsTab, ProjectEditor } from './Projects'
 import type { Project } from './store'
 
-type Tab = 'projects' | 'dashboard' | 'rtm' | 'tree' | 'settings' | 'guide'
-const TABS: [Tab, string][] = [['projects', 'Projects'], ['dashboard', 'Dashboard'], ['rtm', 'RTM'], ['tree', 'Tree'], ['settings', 'Settings'], ['guide', 'Guide & rules']]
+type Tab = 'projects' | 'dashboard' | 'rtm' | 'settings' | 'guide'
+type View = 'list' | 'tree'
+const TABS: [Tab, string][] = [['projects', 'Projects'], ['dashboard', 'Dashboard'], ['rtm', 'RTM'], ['settings', 'Settings'], ['guide', 'Guide & rules']]
 const ls = { get: (k: string) => { try { return localStorage.getItem(k) ?? '' } catch { return '' } }, set: (k: string, v: string) => { try { localStorage.setItem(k, v) } catch { /* ignore */ } } }
 
 const GoogleG = () => (
@@ -66,7 +67,9 @@ export default function App() {
 
 function Main({ email }: { email: string }) {
   const { uuiNotifications, uuiModals } = useUuiContext()
-  const [tab, setTab] = useState<Tab>(() => (ls.get('rtm.tab') as Tab) || 'rtm')
+  const [tab, setTab] = useState<Tab>(() => { const t = ls.get('rtm.tab'); return (t === 'tree' ? 'rtm' : t as Tab) || 'rtm' })
+  const [view, setViewState] = useState<View>(() => ls.get('rtm.tab') === 'tree' || ls.get('rtm.view') === 'tree' ? 'tree' : 'list')
+  const setView = (v: View) => { setViewState(v); ls.set('rtm.view', v) }
   const [projects, setProjects] = useState<Project[] | null>(null)
   const [pid, setPid] = useState(() => ls.get('rtm.project'))
   const [editProject, setEditProject] = useState<Project | null>(null)
@@ -148,24 +151,25 @@ function Main({ email }: { email: string }) {
       </header>
 
       <main className="content">
-        {(activeTab === 'rtm' || activeTab === 'dashboard' || activeTab === 'tree') && (
+        {(activeTab === 'rtm' || activeTab === 'dashboard') && (
           <FlexRow columnGap="12" cx="toolbar" rawProps={{ role: 'toolbar' }}>
             <div className="search"><SearchInput value={q} onValueChange={v => setQ(v ?? '')} placeholder="Search all fields" debounceDelay={150} /></div>
+            {activeTab === 'rtm' && <MultiSwitch<View> size="36" value={view} onValueChange={setView} items={[{ id: 'list', caption: 'List' }, { id: 'tree', caption: 'Tree' }]} rawProps={{ 'aria-label': 'RTM view' }} />}
             <FlexSpacer />
             <Text color="secondary" fontSize="14">{filtered.length} of {rows.length}</Text>
             {project?.canEdit !== false && <Button fill="outline" color="secondary" caption="Import Excel" onClick={() => fileRef.current?.click()} />}
-            {activeTab === 'rtm' && <Button fill="outline" color="secondary" caption={hiddenCols ? `Columns · ${hiddenCols} hidden` : 'Columns'} onClick={openColumns} />}
+            {activeTab === 'rtm' && view === 'list' && <Button fill="outline" color="secondary" caption={hiddenCols ? `Columns · ${hiddenCols} hidden` : 'Columns'} onClick={openColumns} />}
             <Button fill="outline" color="secondary" caption="Export Excel" onClick={() => import('./excel').then(m => m.exportExcel(filtered, project?.name ?? 'RTM', cfg))} />
             {project?.canEdit !== false && <Button color="primary" caption="+ Requirement" onClick={() => setEditing({ r: { ...emptyReq(nextIdFor(rows, cfg)), status: cfg.workflow.initial }, isNew: true })} />}
             <input ref={fileRef} type="file" accept=".xlsx,.xlsm" hidden onChange={e => { const f = e.target.files?.[0]; if (f) onImport(f); e.target.value = '' }} />
           </FlexRow>
         )}
-        {(activeTab === 'rtm' || activeTab === 'dashboard') && <ActiveFilters cfg={cfg} st={filters} onChange={setFilters} />}
+        {(activeTab === 'dashboard' || (activeTab === 'rtm' && view === 'list')) && <ActiveFilters cfg={cfg} st={filters} onChange={setFilters} />}
         {activeTab === 'projects' && projects && <ProjectsTab projects={projects} currentId={pid} onOpen={id => { setPid(id); setTab('rtm') }} onEdit={setEditProject} onChanged={loadProjects} notify={notify}
           onOpenShared={() => store.openSharedProject().then(async id => { if (id) { await loadProjects(); setPid(id); setTab('rtm'); notify('Shared project opened') } }).catch(e => notify(e.message, false))} />}
         {activeTab === 'dashboard' && <Dashboard rows={filtered} onOpen={open} />}
-        {activeTab === 'rtm' && <RtmTable rows={filtered} onOpen={open} state={tableState} setState={setTableState} fctx={fctx} />}
-        {activeTab === 'tree' && <TreeView rows={rows} onOpen={open} q={q} />}
+        {activeTab === 'rtm' && view === 'list' && <RtmTable rows={filtered} onOpen={open} state={tableState} setState={setTableState} fctx={fctx} />}
+        {activeTab === 'rtm' && view === 'tree' && <TreeView rows={rows} onOpen={open} q={q} filtersActive={Object.values(filters.values).some(v => v.length)} />}
         {activeTab === 'settings' && project && <Settings projectId={pid} config={cfg} isOwner={!!project.isOwner} onSaved={loadProjects} notify={notify} />}
         {activeTab === 'guide' && <Guide />}
       </main>

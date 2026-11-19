@@ -33,7 +33,7 @@ function Node({ n, depth, open, toggle, onOpen, q }: { n: TreeNode; depth: numbe
   )
 }
 
-export function TreeView({ rows, onOpen, q }: { rows: Req[]; onOpen: (r: Req) => void; q: string }) {
+export function TreeView({ rows, onOpen, q, filtersActive }: { rows: Req[]; onOpen: (r: Req) => void; q: string; filtersActive?: boolean }) {
   const t = useMemo(() => buildTree(rows), [rows])
   const all = useMemo(() => {
     const s = new Set<string>(); const walk = (n: TreeNode) => { if (n.children.length) s.add(n.req.id); n.children.forEach(walk) }
@@ -54,7 +54,7 @@ export function TreeView({ rows, onOpen, q }: { rows: Req[]; onOpen: (r: Req) =>
           <Button size="30" fill="none" color="secondary" caption="Expand all" onClick={() => setOpen(all)} />
           <Button size="30" fill="none" color="secondary" caption="Collapse all" onClick={() => setOpen(new Set())} />
         </FlexRow>
-        <Text fontSize="14" color="secondary">Links come from “Parent Requirement / Business Objective”: put the parent’s ID there (several IDs separated by commas). Click an ID to open it.</Text>
+        <Text fontSize="14" color="secondary">Links come from “Parent Requirement / Business Objective”: put the parent’s ID there (several IDs separated by commas). Click an ID to open it. Search highlights matches.{filtersActive ? ' Column filters from the List view are not applied here, so the hierarchy stays whole.' : ''}</Text>
       </Panel>
 
       {t.issues.length > 0 && (

@@ -7,7 +7,7 @@ status rules and the **Traceability Check** formula. UI: EPAM UUI (Loveship).
 - **Trash**: deleting a project moves it to trash (restorable, data kept). Permanent delete only from trash, after typing the project name; the database refuses to hard-delete projects not in trash.
 - **Projects**: one RTM per project/client. Only project members see it (owners manage settings + members).
 - **Settings (per project, owners edit)**: ID prefix/digits, every dropdown list, field labels/visibility/required/table columns, custom fields, traceability rules on/off, status workflow matrix.
-- **Tree**: hierarchy Business → Stakeholder → Functional / Non-functional / Transition, built from the
+- **RTM tab, List / Tree switch** — Tree: hierarchy Business → Stakeholder → Functional / Non-functional / Transition, built from the
   Parent Requirement field (one or more parent IDs, comma-separated). Flags requirements with no parent,
   wrong-level links and cycles. The form has a "Link parent requirement" picker and shows parents/children.
 - **Attachments & links** per requirement: links (Jira, Confluence, Figma…) and files up to 50 MB.
