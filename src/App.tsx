@@ -237,7 +237,7 @@ function Main({ email, onSignOut }: { email: string; onSignOut: () => void }) {
             <FlexSpacer />
             <Text color="secondary" fontSize="14">{filtered.length} of {rows.length}</Text>
             {project?.canEdit !== false && <Button fill="outline" color="secondary" caption="Import Excel" onClick={() => fileRef.current?.click()} />}
-            <Button fill="outline" color="secondary" caption="Export Excel" onClick={() => import('./excel').then(m => m.exportExcel(filtered, project?.name ?? 'RTM', cfg))} />
+            <Button fill="outline" color="secondary" caption="Export Excel" onClick={() => import('./excel').then(m => m.exportExcel(filtered, project?.name ?? 'RTM', cfg, versions))} />
             {activeTab === 'rtm' && project?.canEdit !== false && <Button fill="outline" color="primary" caption="AI" onClick={() => setAiOpen(true)} rawProps={{ title: 'Turn notes, documents and transcripts into requirements with Claude' }} />}
             {project?.canEdit !== false && <Button color="primary" caption="+ Requirement" onClick={startNew} />}
             <input ref={fileRef} type="file" accept=".xlsx,.xlsm" hidden onChange={e => { const f = e.target.files?.[0]; if (f) onImport(f); e.target.value = '' }} />
@@ -251,7 +251,7 @@ function Main({ email, onSignOut }: { email: string; onSignOut: () => void }) {
           <div className={'split' + (shown ? ' with-pane' : '')} ref={splitRef}>
             <div className="split-main">
               {view === 'list'
-                ? <RtmTable rows={filtered} onOpen={open} state={tableState} setState={setTableState} fctx={fctx} selectedId={shown?.isNew ? undefined : shown?.r.id} />
+                ? <RtmTable rows={filtered} versions={versions} onOpen={open} state={tableState} setState={setTableState} fctx={fctx} selectedId={shown?.isNew ? undefined : shown?.r.id} />
                 : <TreeTable rows={rows} q={q} filters={filters} onOpen={open} selectedId={shown?.isNew ? undefined : shown?.r.id} fold={fold} />}
             </div>
             {shown && (
