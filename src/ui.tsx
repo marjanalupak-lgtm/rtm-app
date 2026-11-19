@@ -12,7 +12,7 @@ export function Select(p: { value: string; options: readonly string[]; labels?: 
   return (
     <PickerInput<Opt, string>
       dataSource={ds} selectionMode="single" valueType="id"
-      value={p.value} onValueChange={v => p.onChange(v ?? '')}
+      value={(p.value || undefined) as string} onValueChange={v => p.onChange(v ?? "")}
       getName={i => i.name} searchPosition="none"
       placeholder={p.placeholder ?? 'Select'} isInvalid={p.isInvalid} isDisabled={p.isDisabled} disableClear={p.noClear}
     />
