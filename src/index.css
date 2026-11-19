@@ -18,7 +18,7 @@ a:hover { text-decoration: underline; }
 
 .app { display: flex; flex-direction: column; min-height: 100%; }
 .topbar { display: flex; align-items: center; gap: 6px; height: 60px; padding: 0 18px; background: var(--uui-main_menu-bg, #303240); color: #fff; position: sticky; top: 0; z-index: 5; }
-.brand { font-weight: 700; font-size: 20px; letter-spacing: .5px; margin-right: 18px; }
+.brand { font-weight: 700; font-size: 20px; letter-spacing: .3px; margin-right: 18px; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 .toptab { color: #fff !important; }
 .who { color: #fff !important; opacity: .8; }
 .content { padding: 18px 24px 36px; flex: 1; min-width: 0; }
@@ -71,8 +71,33 @@ a:hover { text-decoration: underline; }
 .rules { margin: 6px 0 0; padding-left: 18px; line-height: 1.6; font-size: 14px; }
 
 /* Login */
-.login { min-height: 100%; display: grid; place-items: center; padding: 16px; }
-.login-card { width: min(420px, 100%); padding: 30px; border-radius: 6px; display: flex; flex-direction: column; gap: 12px; }
+.login { position: relative; overflow: hidden; min-height: 100%; display: grid; place-items: center; padding: 32px 16px;
+  background: linear-gradient(135deg, #141A3D 0%, #1D2B6B 30%, #0E5FB3 62%, #1F8A60 100%); color: #F4F7FB; }
+.login-glow { position: absolute; border-radius: 50%; filter: blur(70px); opacity: .55; pointer-events: none; }
+.login-glow.g1 { width: 520px; height: 520px; background: #3D8BFF; top: -160px; right: -120px; animation: drift 16s ease-in-out infinite alternate; }
+.login-glow.g2 { width: 460px; height: 460px; background: #3DB053; bottom: -180px; left: -140px; opacity: .4; animation: drift 20s ease-in-out infinite alternate-reverse; }
+@keyframes drift { from { transform: translate(0, 0); } to { transform: translate(-40px, 30px); } }
+.login-card { position: relative; width: min(440px, 100%); padding: 40px 36px 28px; border-radius: 20px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px;
+  background: rgba(255, 255, 255, .09); border: 1px solid rgba(255, 255, 255, .22); box-shadow: 0 24px 60px rgba(8, 12, 40, .45); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.login-logo { width: 104px; height: 104px; border-radius: 28px; display: grid; place-items: center; background: rgba(255, 255, 255, .12); border: 1px solid rgba(255, 255, 255, .25); }
+.login-title { margin: 6px 0 0; font-size: 40px; font-weight: 700; letter-spacing: .2px; color: #FFFFFF; }
+.login-tagline { margin: 0; font-size: 20px; font-weight: 600; color: #8FF0AE; }
+.login-lead { margin: 4px 0 0; font-size: 15px; line-height: 1.55; color: #D6E2F2; }
+.login-points { list-style: none; margin: 6px 0 4px; padding: 0; display: flex; flex-direction: column; gap: 8px; align-self: stretch; text-align: left; }
+.login-points li { display: flex; align-items: center; gap: 10px; font-size: 15px; color: #EEF3FA; padding: 8px 12px; border-radius: 10px; background: rgba(255, 255, 255, .07); }
+.login-points .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.dot.d1 { background: #8FF0AE; } .dot.d2 { background: #BFE3FF; } .dot.d3 { background: #FFD27A; }
+.gbtn { margin-top: 6px; align-self: stretch; display: flex; align-items: center; justify-content: center; gap: 12px; height: 48px; border-radius: 24px; border: 0; cursor: pointer;
+  background: #FFFFFF; color: #1F1F1F; font: 600 16px/1 'Source Sans Pro', 'Roboto', Arial, sans-serif; box-shadow: 0 6px 18px rgba(0, 0, 0, .25); transition: transform .15s, box-shadow .15s; }
+.gbtn:hover { transform: translateY(-1px); box-shadow: 0 10px 24px rgba(0, 0, 0, .3); }
+.gbtn:focus-visible { outline: 3px solid #8FF0AE; outline-offset: 3px; }
+.gbtn:disabled { opacity: .75; cursor: wait; transform: none; }
+.login-note { margin: 0; font-size: 14px; color: #FFD27A; }
+.login-err { margin: 0; font-size: 14px; color: #FFB4A6; }
+.login-fine { margin: 4px 0 0; font-size: 12px; line-height: 1.5; color: #AFC2DA; }
+.login-fine a { color: #FFFFFF; text-decoration: underline; }
+@media (prefers-reduced-motion: reduce) { .login-glow { animation: none; } }
+@media (max-width: 480px) { .login-card { padding: 32px 20px 24px; } .login-title { font-size: 34px; } }
 
 @media (max-width: 700px) {
   .content { padding: 12px 16px; }

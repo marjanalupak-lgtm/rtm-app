@@ -1,4 +1,4 @@
-# RTM — Requirements Traceability Matrix
+# RTM tree — Requirements Traceability Matrix
 
 Web app for a team RTM. Built on the RTM.xlsm template: same 28 fields, dropdown lists,
 status rules and the **Traceability Check** formula. UI: EPAM UUI (Loveship).

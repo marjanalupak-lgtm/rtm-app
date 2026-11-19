@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useUuiContext } from '@epam/uui-core'
-import { Button, FlexRow, FlexSpacer, SearchInput, TabButton, Text, Panel, SuccessNotification, ErrorNotification, Badge } from '@epam/uui'
+import { Button, FlexRow, FlexSpacer, SearchInput, TabButton, Text, SuccessNotification, ErrorNotification, Badge } from '@epam/uui'
 import { emptyReq, severity, type Req } from './model'
 import { ConfigContext, defaultConfig, fieldLabel } from './config'
 import { check, nextIdFor } from './rules'
@@ -14,25 +14,43 @@ import { Editor } from './Editor'
 import { MultiSelect, Select } from './ui'
 import { ProjectsTab, ProjectEditor } from './Projects'
 import type { Project } from './store'
+import { TreeLogo } from './Logo'
 
 type Tab = 'projects' | 'dashboard' | 'rtm' | 'tree' | 'settings' | 'guide'
 const TABS: [Tab, string][] = [['projects', 'Projects'], ['dashboard', 'Dashboard'], ['rtm', 'RTM'], ['tree', 'Tree'], ['settings', 'Settings'], ['guide', 'Guide & rules']]
 const ls = { get: (k: string) => { try { return localStorage.getItem(k) ?? '' } catch { return '' } }, set: (k: string, v: string) => { try { localStorage.setItem(k, v) } catch { /* ignore */ } } }
 
+const GoogleG = () => (
+  <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true">
+    <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/>
+    <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/>
+    <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/>
+    <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/>
+  </svg>
+)
+
 function Login({ reason }: { reason?: string }) {
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
+  const go = () => { setBusy(true); setErr(''); store.signIn().catch(e => setErr(e.message)).finally(() => setBusy(false)) }
   return (
     <div className="login">
-      <Panel background="surface-main" shadow cx="login-card">
-        <Text fontSize="24" fontWeight="600">RTM</Text>
-        <Text color="secondary">Requirements Traceability Matrix. Your projects are stored as Google Sheets in your own Google Drive (folder “RTM”). Only you and the people you share them with can see them.</Text>
-        {reason && <Text color="warning">{reason}</Text>}
-        {err && <Text color="critical">{err}</Text>}
-        <Button color="primary" caption={busy ? 'Signing in…' : 'Sign in with Google'} isDisabled={busy}
-          onClick={() => { setBusy(true); setErr(''); store.signIn().catch(e => setErr(e.message)).finally(() => setBusy(false)) }} />
-        <Text fontSize="12" color="secondary">The app only gets access to files it creates or that you open with it — not the rest of your Drive.</Text>
-      </Panel>
+      <div className="login-glow g1" /><div className="login-glow g2" />
+      <main className="login-card">
+        <div className="login-logo"><TreeLogo size={76} /></div>
+        <h1 className="login-title">RTM tree</h1>
+        <p className="login-tagline">Every request has a root.</p>
+        <p className="login-lead">Trace every requirement from the business need it grows from to the design, test and defect it ends in — for any project.</p>
+        <ul className="login-points">
+          <li><span className="dot d1" />Tree from business need to test</li>
+          <li><span className="dot d2" />Stored in your own Google Drive</li>
+          <li><span className="dot d3" />Audit-ready Excel in one click</li>
+        </ul>
+        {reason && <p className="login-note">{reason}</p>}
+        {err && <p className="login-err" role="alert">{err}</p>}
+        <button className="gbtn" onClick={go} disabled={busy}><GoogleG /><span>{busy ? 'Signing in…' : 'Sign in with Google'}</span></button>
+        <p className="login-fine">RTM tree only sees files it creates or that you open with it — never the rest of your Drive. <a href="privacy.html">Privacy</a></p>
+      </main>
     </div>
   )
 }
@@ -115,7 +133,7 @@ function Main({ email }: { email: string }) {
     <ConfigContext.Provider value={cfg}>
     <div className="app">
       <header className="topbar">
-        <div className="brand">RTM</div>
+        <div className="brand"><TreeLogo size={30} /><span>RTM tree</span></div>
         {liveProjects.length > 0 && (
           <div className="project-pick"><Select value={pid} options={liveProjects.map(p => p.id)} labels={Object.fromEntries(liveProjects.map(p => [p.id, p.name]))} onChange={v => { setPid(v); if (activeTab === 'projects') setTab('rtm') }} placeholder="Select project" noClear /></div>
         )}
