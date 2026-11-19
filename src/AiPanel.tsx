@@ -1,7 +1,7 @@
 // AI intake: paste text / add files → Claude proposes requirements → the user reviews, edits, ticks and applies.
 // All text from files and from Claude is rendered as plain text (never as HTML).
 import { useMemo, useRef, useState } from 'react'
-import { Badge, Button, Checkbox, FlexRow, FlexSpacer, IconButton, LabeledInput, Text, TextArea, TextInput, WarningAlert } from '@epam/uui'
+import { Badge, Button, Checkbox, FlexRow, FlexSpacer, LabeledInput, Text, TextArea, TextInput, WarningAlert } from '@epam/uui'
 import type { Req } from './model'
 import type { Config } from './config'
 import { Select } from './ui'
@@ -10,6 +10,7 @@ import { ACCEPT, checkSize, fileToBlocks, type Block } from './ai/inputs'
 import { AiError, describe, explain, getKey, runIntake } from './ai/client'
 import { APPENDED, allowedChanges, cardProblem, cardWarnings, planApply } from './ai/apply'
 import type { AiResult, Proposal, ProposalKind } from './ai/prompt'
+import { Check, FileIcon, Layers, Shield, sizeLabel, Sparkle, Upload } from './ai/icons'
 
 const KIND: Record<ProposalKind, { label: string; color: 'success' | 'info' | 'neutral' | 'warning' }> = {
   new: { label: 'NEW', color: 'success' }, update: { label: 'UPDATE', color: 'info' },
@@ -27,6 +28,7 @@ export function AiPanel(p: { pid: string; rows: Req[]; cfg: Config; me: string; 
   const [cards, setCards] = useState<Proposal[]>([])
   const [ticked, setTicked] = useState<Set<number>>(new Set())
   const [filter, setFilter] = useState<ProposalKind | 'all'>('all')
+  const [drag, setDrag] = useState(false)
   const [defs, setDefs] = useState({ release: cfg.lists.release[cfg.lists.release.length - 1] ?? '', owner: p.me, source: `AI intake ${today()}` })
   const abort = useRef<AbortController | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -86,12 +88,14 @@ export function AiPanel(p: { pid: string; rows: Req[]; cfg: Config; me: string; 
   return (
     <div className="ai-overlay" role="dialog" aria-modal="true" aria-label="AI intake">
       <div className="ai-panel">
-        <FlexRow padding="24" vPadding="18" borderBottom columnGap="12">
-          <Text fontSize="18" fontWeight="600">AI intake</Text>
-          {res && <Text color="secondary" fontSize="14">{counts('new')} new · {counts('update')} updates · {counts('duplicate')} duplicates · {counts('conflict')} conflicts</Text>}
-          <FlexSpacer />
-          <IconButton icon={() => <span className="pane-x" aria-hidden>×</span>} onClick={close} rawProps={{ 'aria-label': 'Close AI intake' }} />
-        </FlexRow>
+        <header className="ai-head">
+          <span className="ai-head-icon"><Sparkle size={22} /></span>
+          <div className="ai-head-text">
+            <h2>AI intake</h2>
+            <p>{res ? `${counts('new')} new · ${counts('update')} updates · ${counts('duplicate')} duplicates · ${counts('conflict')} conflicts` : 'Turn notes, documents and transcripts into structured requirements.'}</p>
+          </div>
+          <button className="ai-close" onClick={close} aria-label="Close AI intake">×</button>
+        </header>
 
         <div className="ai-body">
           {err && <WarningAlert cx="mb">{err}</WarningAlert>}
@@ -101,34 +105,72 @@ export function AiPanel(p: { pid: string; rows: Req[]; cfg: Config; me: string; 
             </WarningAlert>
           )}
 
-          {!res && (
+          {!res && !busy && (
             <div className="ai-input">
-              <TextArea value={text} onValueChange={v => setText(v ?? '')} rows={10} autoSize placeholder="Paste or type notes, an email, meeting notes or a transcript…" isDisabled={!!busy} />
-              <FlexRow columnGap="12" cx="ai-files">
-                <Button fill="outline" color="secondary" caption="+ Add files" onClick={() => fileRef.current?.click()} isDisabled={!!busy} />
+              <ol className="ai-steps" aria-label="How it works">
+                <li><span className="ai-step-ic"><Upload /></span><div><b>Add material</b><span>Paste text or drop files</span></div></li>
+                <li><span className="ai-step-ic"><Sparkle /></span><div><b>Claude proposes</b><span>New, updates, duplicates, conflicts</span></div></li>
+                <li><span className="ai-step-ic"><Check /></span><div><b>You decide</b><span>Edit, tick and apply — nothing saves before</span></div></li>
+              </ol>
+
+              <label className="ai-label" htmlFor="ai-text">Notes, email, meeting minutes or transcript</label>
+              <TextArea id="ai-text" cx="ai-text" value={text} onValueChange={v => setText(v ?? '')} rows={7} autoSize
+                placeholder={'e.g.\n- Site staff need to export one participant\'s audit trail as PDF\n- Participants want a reminder 30 min before each task'} />
+
+              <div className={'ai-drop' + (drag ? ' over' : '')}
+                onDragOver={e => { e.preventDefault(); setDrag(true) }} onDragLeave={() => setDrag(false)}
+                onDrop={e => { e.preventDefault(); setDrag(false); addFiles(e.dataTransfer.files) }}>
+                <span className="ai-drop-ic"><Upload size={22} /></span>
+                <div>
+                  <span className="ai-drop-title"><b>Drop files here</b> or <button type="button" className="ai-link" onClick={() => fileRef.current?.click()}>browse</button></span>
+                  <span>PDF, images, Word, Excel, text and transcripts (.vtt, .srt) · up to 32 MB in total</span>
+                </div>
                 <input ref={fileRef} type="file" multiple accept={ACCEPT} hidden onChange={e => { addFiles(e.target.files); e.target.value = '' }} />
-                {files.map((f, i) => (
-                  <span key={i} className="af-chip">{f.name}
-                    <IconButton icon={() => <span className="fchip-x" aria-hidden>×</span>} onClick={() => setFiles(fs => fs.filter((_, j) => j !== i))} rawProps={{ 'aria-label': `Remove ${f.name}` }} />
-                  </span>
-                ))}
-              </FlexRow>
-              <Text color="secondary" fontSize="12">PDF, images, Word, Excel, .txt / .md / .vtt / .srt / .csv. Audio is not supported yet: paste a transcript instead.</Text>
-              <Text color="secondary" fontSize="12">Context sent: {rows.length} requirements, ID structure, lists. Your text and files are sent to Anthropic (Claude).</Text>
+              </div>
+
+              {files.length > 0 && (
+                <ul className="ai-filelist">
+                  {files.map((f, i) => (
+                    <li key={i}>
+                      <FileIcon name={f.name} />
+                      <span className="ai-fname" title={f.name}>{f.name}</span>
+                      <span className="ai-fsize">{sizeLabel(f.size)}</span>
+                      <button className="ai-fx" onClick={() => setFiles(fs => fs.filter((_, j) => j !== i))} aria-label={`Remove ${f.name}`}>×</button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <div className="ai-context">
+                <span><Layers size={16} /> Claude also sees this project: {rows.length} requirements, ID structure and lists.</span>
+                <span><Shield size={16} /> Your text and files are sent to Anthropic (Claude) using your own key. Audio isn't supported yet — paste a transcript.</span>
+              </div>
+            </div>
+          )}
+
+          {!res && busy && (
+            <div className="ai-busy" role="status">
+              <span className="ai-orb"><Sparkle size={30} /></span>
+              <b>{busy}</b>
+              <span>Claude reads your material and compares it with {rows.length} requirements. This usually takes one to two minutes.</span>
             </div>
           )}
 
           {res && (
             <div className="ai-review">
-              <section className="ai-sec"><Text fontWeight="600">Summary</Text><Text>{res.summary}</Text></section>
+              <section className="ai-summary">
+                <span className="ai-head-icon sm"><Sparkle size={18} /></span>
+                <div><b>Summary</b><p>{res.summary}</p></div>
+              </section>
+              <div className="ai-stats">
+                {(['new', 'update', 'duplicate', 'conflict'] as const).map(k => (
+                  <button key={k} className={'ai-stat k-' + k + (filter === k ? ' on' : '')} onClick={() => setFilter(filter === k ? 'all' : k)} aria-pressed={filter === k}>
+                    <b>{counts(k)}</b><span>{KIND[k].label[0] + KIND[k].label.slice(1).toLowerCase()}{counts(k) === 1 || k === 'new' ? '' : 's'}</span>
+                  </button>
+                ))}
+              </div>
               {res.structure.length > 0 && <section className="ai-sec"><Text fontWeight="600">Structure suggestions</Text><ul>{res.structure.map((s, i) => <li key={i}>{s}</li>)}</ul></section>}
 
-              <FlexRow columnGap="6" cx="ai-filter">
-                {(['all', 'new', 'update', 'duplicate', 'conflict'] as const).map(k => (
-                  <Button key={k} size="24" fill={filter === k ? 'solid' : 'outline'} color={filter === k ? 'primary' : 'secondary'}
-                    caption={k === 'all' ? `All (${cards.length})` : `${KIND[k].label[0]}${KIND[k].label.slice(1).toLowerCase()} (${counts(k)})`} onClick={() => setFilter(k)} />
-                ))}
-              </FlexRow>
 
               {shown.map(([c, i]) => {
                 const problem = cardProblem(c, rows, cfg)
@@ -190,13 +232,14 @@ export function AiPanel(p: { pid: string; rows: Req[]; cfg: Config; me: string; 
         </div>
 
         <FlexRow padding="24" vPadding="12" borderTop columnGap="12" cx="ai-foot">
-          {busy && <Text color="secondary" fontSize="14">{busy}</Text>}
+          {res && busy && <Text color="secondary" fontSize="14">{busy}</Text>}
+          {!res && !busy && (text.trim() || files.length > 0) && <Text color="secondary" fontSize="12">{text.trim() ? `${text.trim().split(/\s+/).length} words` : ''}{text.trim() && files.length ? ' · ' : ''}{files.length ? `${files.length} file${files.length > 1 ? 's' : ''}` : ''}</Text>}
           <FlexSpacer />
           {!res && busy && abort.current && <Button fill="outline" color="secondary" caption="Cancel" onClick={() => abort.current?.abort()} />}
           {!res && !busy && <Button fill="none" color="secondary" caption="Close" onClick={close} />}
-          {!res && !busy && <Button color="primary" caption="Analyse" isDisabled={!hasKey || (!text.trim() && !files.length)} onClick={analyse} />}
+          {!res && !busy && <Button color="primary" icon={() => <Sparkle size={16} />} caption="Analyse with Claude" isDisabled={!hasKey || (!text.trim() && !files.length)} onClick={analyse} />}
           {res && !busy && <Button fill="outline" color="secondary" caption="Back to input" onClick={() => { if (confirm('Go back? These results will be discarded.')) { setRes(null); setCards([]) } }} />}
-          {res && <Button color="primary" caption={`Apply ${chosen.length} selected`} isDisabled={!chosen.length || !!busy} onClick={apply} />}
+          {res && <Button color="primary" icon={() => <Check size={16} />} caption={`Apply ${chosen.length} selected`} isDisabled={!chosen.length || !!busy} onClick={apply} />}
         </FlexRow>
       </div>
     </div>

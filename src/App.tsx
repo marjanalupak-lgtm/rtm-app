@@ -16,6 +16,7 @@ import { Guide } from './Guide'
 import { Editor } from './Editor'
 import { Select } from './ui'
 import { AiPanel } from './AiPanel'
+import { Sparkle } from './ai/icons'
 import type { Version } from './versions'
 import type { Section } from './Settings'
 import { ActiveFilters, applyFilters, emptyFilters, type FilterState } from './Filters'
@@ -242,7 +243,7 @@ function Main({ email, onSignOut }: { email: string; onSignOut: () => void }) {
             <Text color="secondary" fontSize="14">{filtered.length} of {rows.length}</Text>
             {project?.canEdit !== false && <Button fill="outline" color="secondary" caption="Import Excel" onClick={() => fileRef.current?.click()} />}
             <Button fill="outline" color="secondary" caption="Export Excel" onClick={() => import('./excel').then(m => m.exportExcel(filtered, project?.name ?? 'RTM', cfg, versions))} />
-            {activeTab === 'rtm' && project?.canEdit !== false && <Button fill="outline" color="primary" caption="AI" onClick={() => setAiOpen(true)} rawProps={{ title: 'Turn notes, documents and transcripts into requirements with Claude' }} />}
+            {activeTab === 'rtm' && project?.canEdit !== false && <Button cx="ai-btn" fill="outline" color="primary" icon={() => <Sparkle size={16} />} caption="AI" onClick={() => setAiOpen(true)} rawProps={{ title: 'Turn notes, documents and transcripts into requirements with Claude' }} />}
             {project?.canEdit !== false && <Button color="primary" caption="+ Requirement" onClick={startNew} />}
             <input ref={fileRef} type="file" accept=".xlsx,.xlsm" hidden onChange={e => { const f = e.target.files?.[0]; if (f) onImport(f); e.target.value = '' }} />
           </FlexRow>
