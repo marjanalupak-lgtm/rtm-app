@@ -181,7 +181,12 @@ function Main({ email, onSignOut }: { email: string; onSignOut: () => void }) {
         initial={editing.r} isNew={editing.isNew} existingIds={new Set(rows.map(r => r.id))}
         onClose={() => { dirtyRef.current = false; setEditing(null) }}
         onSave={async r => {
-          const prev = editing.isNew ? undefined : rows.find(x => x.id === editing.r.id)
+          let prev = editing.isNew ? undefined : rows.find(x => x.id === editing.r.id)
+          if (prev && r.id !== prev.id) {
+            // New ID (type or area changed): rename it everywhere first, then save the edits.
+            await store.renameIds(editing.pid, { [prev.id]: r.id })
+            prev = (await store.listReqs(editing.pid)).find(x => x.id === r.id)
+          }
           await store.saveReq(editing.pid, r, prev)
           await reload(); dirtyRef.current = false
           // In the side pane the saved requirement stays open; the drawer closes.
@@ -249,7 +254,7 @@ function Main({ email, onSignOut }: { email: string; onSignOut: () => void }) {
             )}
           </div>
         )}
-        {activeTab === 'settings' && project && <Settings projectId={pid} rows={rows} config={cfg} isOwner={!!project.isOwner} onSaved={loadProjects} notify={notify} />}
+        {activeTab === 'settings' && project && <Settings projectId={pid} rows={rows} onRowsChanged={reload} config={cfg} isOwner={!!project.isOwner} onSaved={loadProjects} notify={notify} />}
         {activeTab === 'guide' && <Guide />}
       </main>
 

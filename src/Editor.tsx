@@ -7,7 +7,7 @@ import { check, allowedNext, gateFor } from './rules'
 import { history as loadHistory, uploadAttachment, removeAttachmentFile, newLink, type HistoryEntry } from './store'
 import { buildTree, levelOf } from './tree'
 import { Select, CheckBadge } from './ui'
-import { nextSchemeId } from './idScheme'
+import { nextSchemeId, parseId } from './idScheme'
 
 const GROUPS: Field['group'][] = ['Core', 'Traceability', 'Design', 'Governance', 'Verification']
 
@@ -34,12 +34,26 @@ export function Editor(p: {
   const idTaken = p.isNew && p.existingIds.has(r.id.trim())
   const designOff = r.design_required !== 'Yes'
 
-  // Structured IDs (Settings › IDs): a new requirement gets the next free ID for its type + area.
-  const sc = p.isNew && cfg.id.scheme?.on ? cfg.id.scheme : undefined
-  const needsArea = !!sc?.types[r.type]?.area
-  const [area, setArea] = useState(sc?.areas[0]?.code ?? '')
+  // Structured IDs (Settings › IDs): a new requirement gets the next free ID for its type + area;
+  // an existing one is offered a new ID when its type or area no longer matches.
+  const scheme = cfg.id.scheme?.on ? cfg.id.scheme : undefined
+  const sc = p.isNew ? scheme : undefined
+  const rule = scheme?.types[r.type]
+  const needsArea = !!rule?.area
+  const origParsed = scheme && !p.isNew ? parseId(p.initial.id, scheme.sep) : null
+  const [area, setArea] = useState(origParsed?.area ?? scheme?.areas[0]?.code ?? '')
   const [idTouched, setIdTouched] = useState(false)
-  const idHint = sc ? 'Filled in from type and area (next free number). Never reuse an ID.' : `Stable ID, e.g. ${cfg.id.prefix}${'1'.padStart(cfg.id.digits, '0')}. Never reuse.`
+  useEffect(() => {
+    if (!sc || idTouched) return
+    const n = nextSchemeId(p.allRows, sc, r.type, area) ?? ''
+    setR(x => x.id === n ? x : { ...x, id: n })
+  }, [sc, r.type, area, idTouched, p.allRows])
+  const fits = !!origParsed && !!rule?.code && origParsed.code === rule.code && (rule.area ? origParsed.area === area : !origParsed.area)
+  const suggestion = scheme && !p.isNew && rule?.code && !fits && (!rule.area || area)
+    ? nextSchemeId(p.allRows.filter(x => x.id !== p.initial.id), scheme, r.type, rule.area ? area : undefined) : null
+  useEffect(() => { if (!suggestion && !p.isNew && r.id !== p.initial.id) set('id', p.initial.id) }, [suggestion]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (suggestion && r.id !== p.initial.id && r.id !== suggestion) set('id', suggestion) }, [suggestion]) // eslint-disable-line react-hooks/exhaustive-deps
+  const idHint = scheme && !p.isNew ? 'Stable ID. Changes only if type or area changes.' : sc ? 'Filled in from type and area (next free number). Never reuse an ID.' : `Stable ID, e.g. ${cfg.id.prefix}${'1'.padStart(cfg.id.digits, '0')}. Never reuse.`
   useEffect(() => {
     if (!sc || idTouched) return
     const n = nextSchemeId(p.allRows, sc, r.type, area) ?? ''
@@ -109,6 +123,26 @@ export function Editor(p: {
         )}
         <TextInput value={v} onValueChange={x => { setIdTouched(true); set('id', x ?? '') }} isInvalid={idTaken}
           placeholder={r.type ? 'Add areas in Settings › IDs' : 'Choose Requirement Type to get an ID'} />
+      </div>
+    )
+    if (f.key === 'id' && scheme && !p.isNew) return (
+      <div>
+        <div className="id-builder">
+          {needsArea && scheme.areas.length > 0 && !p.readOnly && (
+            <Select value={area} options={scheme.areas.map(a => a.code)} labels={Object.fromEntries(scheme.areas.map(a => [a.code, a.name ? `${a.code} · ${a.name}` : a.code]))}
+              onChange={x => setArea(x)} placeholder="Area" noClear />
+          )}
+          <TextInput value={v} onValueChange={() => {}} isDisabled />
+        </div>
+        {suggestion && !p.readOnly && (
+          <div className="id-suggest" role="status">
+            {r.id === suggestion
+              ? <><span>Will be renamed from <b>{p.initial.id}</b> when you save. Links to it are updated too.</span>
+                  <Button size="24" fill="outline" color="secondary" caption={`Keep ${p.initial.id}`} onClick={() => set('id', p.initial.id)} /></>
+              : <><span>Type or area doesn't match the ID. New ID: <b>{suggestion}</b></span>
+                  <Button size="24" fill="outline" color="primary" caption="Use new ID" onClick={() => set('id', suggestion)} /></>}
+          </div>
+        )}
       </div>
     )
     if (f.key === 'status') return <Select value={v} options={statusOpts} onChange={x => set('status', x)} />

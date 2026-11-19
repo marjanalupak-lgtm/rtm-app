@@ -7,13 +7,16 @@ import * as store from './store'
 import { Select } from './ui'
 import type { Req } from './model'
 import { defaultScheme, detectScheme, example, type IdScheme } from './idScheme'
+import { planRename, toMap, type Plan } from './idRename'
+import { RenameModal } from './RenameModal'
+import { useUuiContext } from '@epam/uui-core'
 
 type Section = 'general' | 'lists' | 'fields' | 'custom' | 'rules' | 'workflow'
 const SECTIONS: [Section, string][] = [['general', 'IDs'], ['lists', 'Lists'], ['fields', 'Fields'], ['custom', 'Custom fields'], ['rules', 'Traceability rules'], ['workflow', 'Status workflow']]
 const CUSTOM_TYPES: CustomType[] = ['text', 'long', 'list', 'link', 'date']
 type ListName = keyof Config['lists']
 
-export function Settings(p: { projectId: string; rows: Req[]; config: Config; isOwner: boolean; onSaved: () => void; notify: (m: string, ok?: boolean) => void }) {
+export function Settings(p: { projectId: string; rows: Req[]; onRowsChanged: () => Promise<void> | void; config: Config; isOwner: boolean; onSaved: () => void; notify: (m: string, ok?: boolean) => void }) {
   const [cfg, setCfg] = useState<Config>(p.config)
   const [sec, setSec] = useState<Section>('lists')
   const [listName, setListName] = useState<ListName>('release')
@@ -24,10 +27,38 @@ export function Settings(p: { projectId: string; rows: Req[]; config: Config; is
   const ro = !owner
 
   const up = (fn: (c: Config) => void) => setCfg(c => { const n = structuredClone(c); fn(n); return n })
+  const { uuiModals } = useUuiContext()
+  const askRename = (plan: Plan, title: string, skipLabel?: string) =>
+    uuiModals.show<'rename' | 'skip'>(props => <RenameModal {...props} plan={plan} title={title} skipLabel={skipLabel} />).catch(() => null)
+  const rename = async (plan: Plan) => {
+    const n = await store.renameIds(p.projectId, toMap(plan.items))
+    await p.onRowsChanged()
+    p.notify(`${n} requirement${n === 1 ? '' : 's'} updated`)
+  }
   const save = async () => {
+    const n = normalize(cfg)
+    const prevS = p.config.id.scheme, nextS = n.id.scheme
+    // Structure changed → offer to rename existing IDs to match.
+    const plan = prevS?.on && nextS?.on && JSON.stringify(prevS) !== JSON.stringify(nextS) ? planRename(p.rows, prevS, nextS) : null
+    let choice: 'rename' | 'skip' | null = 'skip'
+    if (plan?.items.length) choice = await askRename(plan, 'Rename existing IDs to the new structure?', 'Save settings only')
+    if (!choice) return
     setBusy(true)
-    try { const n = normalize(cfg); await store.saveConfig(p.projectId, n); setCfg(n); p.onSaved(); p.notify('Settings saved') }
+    try {
+      await store.saveConfig(p.projectId, n); setCfg(n); p.onSaved(); p.notify('Settings saved')
+      if (choice === 'rename' && plan) await rename(plan)
+    }
     catch (e) { p.notify('Save failed: ' + (e as Error).message, false) } finally { setBusy(false) }
+  }
+  // Bring IDs that don't follow the saved structure (e.g. after a type change) in line.
+  const checkIds = async () => {
+    const sc = p.config.id.scheme
+    if (!sc?.on) return
+    const plan = planRename(p.rows, sc, sc)
+    if (!plan.items.length) return p.notify('All IDs follow the structure' + (plan.skipped.length ? ` (${plan.skipped.length} skipped)` : ''))
+    if (await askRename(plan, 'Update IDs that don\'t follow the structure?') !== 'rename') return
+    setBusy(true)
+    try { await rename(plan) } catch (e) { p.notify('Rename failed: ' + (e as Error).message, false) } finally { setBusy(false) }
   }
 
   return (
@@ -54,6 +85,8 @@ export function Settings(p: { projectId: string; rows: Req[]; config: Config; is
               <FlexRow columnGap="12">
                 <Text fontSize="16" fontWeight="600">Requirement IDs</Text>
                 <FlexSpacer />
+                {!ro && p.config.id.scheme?.on && <Button fill="outline" color="secondary" caption="Update IDs to match" isDisabled={dirty || busy} onClick={checkIds}
+                  rawProps={{ title: dirty ? 'Save settings first' : 'Rename IDs that don\'t follow the saved structure, e.g. after a type change' }} />}
                 {!ro && <Button fill="outline" color="secondary" caption="Detect from my requirements" isDisabled={!p.rows.length} onClick={detect}
                   rawProps={{ title: 'Read areas, type codes and number length from the IDs already in this project' }} />}
               </FlexRow>
@@ -104,7 +137,7 @@ export function Settings(p: { projectId: string; rows: Req[]; config: Config; is
                   <FlexRow columnGap="12">
                     <LabeledInput label="Separator"><TextInput value={sc.sep} onValueChange={v => upS(x => { x.sep = (v ?? '-').slice(0, 2) })} isDisabled={ro} cx="idsc-sep" /></LabeledInput>
                   </FlexRow>
-                  <Text color="secondary" fontSize="14">A new requirement gets the next free number for its type and area. Existing IDs are not renamed.</Text>
+                  <Text color="secondary" fontSize="14">A new requirement gets the next free number for its type and area. When you save a changed structure, you can rename existing IDs to match (with a preview first).</Text>
                 </>
               )}
             </>

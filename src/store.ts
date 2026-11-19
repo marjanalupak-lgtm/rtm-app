@@ -3,6 +3,7 @@
 //   with sheets Requirements / History / Meta. Access = Google Drive sharing. No other server sees the data.
 // - Local mode (no client ID): browser-only demo store.
 import { FIELDS, type Req, type Attachment } from './model'
+import { applyRename, type RenameMap } from './idRename'
 import { normalize, type Config } from './config'
 import * as G from './google'
 
@@ -302,6 +303,30 @@ const gdrive = {
     return hist.length
   },
 
+  // Rename IDs (and links to them) in one write; history moves to the new IDs.
+  async renameIds(id: string, map: RenameMap, labels?: (k: string) => string): Promise<number> {
+    await ensureHeader(id)
+    const who = G.currentEmail() ?? '', now = new Date().toISOString()
+    const rows = await getValues(id, `Requirements!A2:${LAST}`)
+    const reqs = rows.map(rowToReq)
+    const taken = new Set(reqs.map(r => r.id.trim()))
+    for (const [from, to] of Object.entries(map)) if (taken.has(to) && !map[to]) throw new Error(`Can't rename ${from} to ${to}: ${to} already exists.`)
+    const changes = applyRename(reqs, map)
+    if (!changes.length) return 0
+    const table = rows.map(x => [...x, ...Array(Math.max(0, REQ_COLS.length - x.length)).fill('')])
+    const hist: string[][] = []
+    for (const c of changes) {
+      const i = reqs.indexOf(c.before)
+      table[i] = reqToRow(c.after, who, now)
+      hist.push([now, who, c.after.id !== c.before.id ? 'rename' : 'update', c.after.id, JSON.stringify(diff(c.before, c.after, labels))])
+    }
+    await putValues(id, `Requirements!A2:${LAST}${table.length + 1}`, table)
+    const old = await getValues(id, 'History!D2:D')
+    if (old.some(x => map[x[0] ?? ''])) await putValues(id, `History!D2:D${old.length + 1}`, old.map(x => [map[x[0] ?? ''] ?? x[0] ?? '']))
+    await appendValues(id, 'History!A1:E1', hist)
+    return changes.length
+  },
+
   async deleteReq(id: string, r: Req, h: HistoryEntry) {
     const rows = await getValues(id, 'Requirements!A2:A')
     const i = rows.findIndex(x => (x[0] ?? '').trim() === r.id.trim())
@@ -441,6 +466,20 @@ export async function bulkSave(projectId: string, rows: Req[], existing: Req[]):
     n++
   }
   return n
+}
+
+// Rename requirement IDs and update Parent / Depends on links that point to them.
+export async function renameIds(projectId: string, map: RenameMap): Promise<number> {
+  if (GOOGLE) return gdrive.renameIds(projectId, map, labelFn)
+  const all = read<LocalReq[]>(LK, [])
+  const mine = all.filter(r => r.project_id === projectId)
+  const changes = applyRename(mine, map)
+  const who = await currentUser(), now = new Date().toISOString()
+  for (const c of changes) Object.assign(c.before, c.after, { updated_at: now, updated_by: who })
+  write(LK, all)
+  const hist = read<HistoryEntry[]>(LH, []).map(h => h.project_id === projectId && map[h.req_id] ? { ...h, req_id: map[h.req_id] } : h)
+  write(LH, [...changes.map(c => ({ project_id: projectId, req_id: c.after.id, changed_at: now, changed_by: who, action: c.after.id !== c.before.id ? 'rename' : 'update', changes: diff(c.before, c.after, labelFn) })), ...hist])
+  return changes.length
 }
 
 export async function deleteReq(projectId: string, r: Req): Promise<void> {
