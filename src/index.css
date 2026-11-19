@@ -396,3 +396,8 @@ body.resizing { cursor: col-resize; user-select: none; }
 .ai-why span { display: flex; gap: 6px; align-items: flex-start; } .ai-why svg { flex: none; margin-top: 1px; color: #9B8FC2; }
 .ai-defaults { padding: 14px 16px; border-radius: 12px; background: #fff; border: 1px solid #ECE8F6; }
 .ai-review { max-width: 1000px; margin: 0 auto; }
+
+/* Unsaved column changes next to the View menu */
+.vm-changed { display: inline-flex; align-items: center; gap: 8px; padding: 3px 4px 3px 10px; border-radius: 10px; background: #F5F1FD; border: 1px solid #DDD2F7; }
+.vm-dot { width: 8px; height: 8px; border-radius: 50%; background: #F2A20C; flex: none; }
+.vm-changed-text { font-size: 13px; color: #4B2AA0; white-space: nowrap; }

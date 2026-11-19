@@ -82,6 +82,7 @@ export function ViewMenu({ pid, allKeys, current, defaults, apply, notify }: {
   const revert = () => apply(active.columns)
 
   return (
+    <>
     <Dropdown
       renderTarget={props => (
         <Button {...props} fill="outline" color="secondary" caption={`View: ${active.name}${modified ? ' (edited)' : ''}`}
@@ -119,5 +120,15 @@ export function ViewMenu({ pid, allKeys, current, defaults, apply, notify }: {
         </DropdownMenuBody>
       )}
     />
+    {modified && (
+      <span className="vm-changed" role="status">
+        <span className="vm-dot" aria-hidden />
+        <span className="vm-changed-text">Columns changed</span>
+        <Button size="30" color="primary" caption="Save as view…" onClick={saveAsNew} rawProps={{ title: 'Save these columns as a new named view' }} />
+        {active.id !== 'default' && <Button size="30" fill="outline" color="secondary" caption={`Update “${active.name}”`} onClick={update} />}
+        <Button size="30" fill="none" color="secondary" caption="Discard" onClick={revert} rawProps={{ title: `Go back to the columns of “${active.name}”` }} />
+      </span>
+    )}
+    </>
   )
 }
