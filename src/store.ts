@@ -279,7 +279,7 @@ const gdrive = {
     await appendValues(id, 'History!A1:E1', [[h.changed_at, h.changed_by, h.action, h.req_id, JSON.stringify(h.changes)]])
   },
 
-  async bulkSave(id: string, incoming: Req[], labels?: (k: string) => string): Promise<number> {
+  async bulkSave(id: string, incoming: Req[], labels?: (k: string) => string, act: { create: string; update: string } = { create: 'import', update: 'import-update' }): Promise<number> {
     await ensureHeader(id)
     const who = G.currentEmail() ?? '', now = new Date().toISOString()
     const rows = await getValues(id, `Requirements!A2:${LAST}`)
@@ -295,7 +295,7 @@ const gdrive = {
       if (prev && !changes.length) continue
       const row = reqToRow(r, who, now)
       if (i === undefined) { index.set(r.id.trim(), table.length); table.push(row) } else table[i] = row
-      hist.push([now, who, prev ? 'import-update' : 'import', r.id, JSON.stringify(changes)])
+      hist.push([now, who, prev ? act.update : act.create, r.id, JSON.stringify(changes)])
     }
     if (!hist.length) return 0
     await putValues(id, `Requirements!A2:${LAST}${table.length + 1}`, table)
@@ -454,18 +454,32 @@ export async function saveReq(projectId: string, r: Req, prev: Req | undefined, 
   write(LH, [h, ...read<HistoryEntry[]>(LH, [])].slice(0, 5000))
 }
 
-export async function bulkSave(projectId: string, rows: Req[], existing: Req[]): Promise<number> {
-  if (GOOGLE) return gdrive.bulkSave(projectId, rows, labelFn)
+export async function bulkSave(projectId: string, rows: Req[], existing: Req[], act: { create: string; update: string } = { create: 'import', update: 'import-update' }): Promise<number> {
+  if (GOOGLE) return gdrive.bulkSave(projectId, rows, labelFn, act)
   const byId = new Map(existing.map(r => [r.id, r]))
   let n = 0
   for (const r of rows) {
     if (!r.id) continue
     const prev = byId.get(r.id)
     if (prev && !diff(prev, clean(r), labelFn).length) continue
-    await saveReq(projectId, r, prev, prev ? 'import-update' : 'import')
+    await saveReq(projectId, r, prev, prev ? act.update : act.create)
     n++
   }
   return n
+}
+
+// AI intake: new rows in one batch, then each update on its own (an update to a row changed by
+// someone else since the analysis is skipped and reported, the rest still apply).
+export async function applyIntake(projectId: string, plan: { creates: Req[]; updates: { prev: Req; next: Req }[] }, existing: Req[]):
+  Promise<{ created: number; updated: number; skipped: { id: string; why: string }[] }> {
+  const created = plan.creates.length ? await bulkSave(projectId, plan.creates, existing, { create: 'ai-intake', update: 'ai-intake' }) : 0
+  let updated = 0
+  const skipped: { id: string; why: string }[] = []
+  for (const u of plan.updates) {
+    try { await saveReq(projectId, u.next, u.prev, 'ai-update'); updated++ }
+    catch (e) { skipped.push({ id: u.next.id, why: (e as Error).message }) }
+  }
+  return { created, updated, skipped }
 }
 
 // Rename requirement IDs and update Parent / Depends on links that point to them.

@@ -9,16 +9,17 @@ import type { Req } from './model'
 import { defaultScheme, detectScheme, example, type IdScheme } from './idScheme'
 import { needsAreaCount, planRename, toMap, type Plan } from './idRename'
 import { RenameModal, type RenameChoice } from './RenameModal'
+import { AiKeySection } from './ai/AiKeySection'
 import { useUuiContext } from '@epam/uui-core'
 
-type Section = 'general' | 'lists' | 'fields' | 'custom' | 'rules' | 'workflow'
-const SECTIONS: [Section, string][] = [['general', 'IDs'], ['lists', 'Lists'], ['fields', 'Fields'], ['custom', 'Custom fields'], ['rules', 'Traceability rules'], ['workflow', 'Status workflow']]
+export type Section = 'general' | 'lists' | 'fields' | 'custom' | 'rules' | 'workflow' | 'ai'
+const SECTIONS: [Section, string][] = [['general', 'IDs'], ['lists', 'Lists'], ['fields', 'Fields'], ['custom', 'Custom fields'], ['rules', 'Traceability rules'], ['workflow', 'Status workflow'], ['ai', 'AI']]
 const CUSTOM_TYPES: CustomType[] = ['text', 'long', 'list', 'link', 'date']
 type ListName = keyof Config['lists']
 
-export function Settings(p: { projectId: string; rows: Req[]; onRowsChanged: () => Promise<void> | void; config: Config; isOwner: boolean; onSaved: () => void; notify: (m: string, ok?: boolean) => void }) {
+export function Settings(p: { initialSection?: Section; projectId: string; rows: Req[]; onRowsChanged: () => Promise<void> | void; config: Config; isOwner: boolean; onSaved: () => void; notify: (m: string, ok?: boolean) => void }) {
   const [cfg, setCfg] = useState<Config>(p.config)
-  const [sec, setSec] = useState<Section>('lists')
+  const [sec, setSec] = useState<Section>(p.initialSection ?? 'lists')
   const [listName, setListName] = useState<ListName>('release')
   const owner = store.mode === 'local' || p.isOwner
   const [busy, setBusy] = useState(false)
@@ -194,6 +195,8 @@ export function Settings(p: { projectId: string; rows: Req[]; onRowsChanged: () 
               ))}
             </>
           )}
+
+          {sec === 'ai' && <AiKeySection notify={p.notify} />}
 
           {sec === 'workflow' && (
             <>
