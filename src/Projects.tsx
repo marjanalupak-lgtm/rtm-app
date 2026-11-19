@@ -20,13 +20,13 @@ function coverage(rows: Req[], cfg = normalize(undefined)) {
 
 export function ProjectsTab(p: {
   projects: Project[]; currentId: string; onOpen: (id: string) => void; onEdit: (pr: Project) => void
-  onChanged: () => void; notify: (m: string, ok?: boolean) => void
+  onChanged: () => void; notify: (m: string, ok?: boolean) => void; onOpenShared: () => void
 }) {
   const [stats, setStats] = useState<Record<string, Req[]>>({})
   const [showClosed, setShowClosed] = useState(false)
   const [showTrash, setShowTrash] = useState(false)
   const [purging, setPurging] = useState<Project | null>(null)
-  useEffect(() => { store.projectStats().then(setStats).catch(() => {}) }, [p.projects])
+  useEffect(() => { store.projectStats(p.projects).then(setStats).catch(() => {}) }, [p.projects])
   const active = p.projects.filter(x => !x.deleted_at)
   const trash = p.projects.filter(x => x.deleted_at)
   const list = active.filter(x => showClosed || x.status !== 'Closed')
@@ -40,6 +40,7 @@ export function ProjectsTab(p: {
         <FlexSpacer />
         {closed > 0 && <Button fill="none" color="secondary" caption={showClosed ? 'Hide closed' : `Show closed (${closed})`} onClick={() => setShowClosed(s => !s)} />}
         {trash.length > 0 && <Button fill="none" color="secondary" caption={showTrash ? 'Hide trash' : `Trash (${trash.length})`} onClick={() => setShowTrash(s => !s)} />}
+        {store.mode === 'google' && <Button fill="outline" color="secondary" caption="Open shared project" onClick={p.onOpenShared} />}
         <Button color="accent" caption="+ Project" onClick={() => p.onEdit(emptyProject())} />
       </FlexRow>
       {!active.length && (
@@ -132,7 +133,7 @@ export function ProjectEditor(p: {
   const isNew = !p.initial.id
   const loadMembers = () => { if (!isNew) store.listMembers(p.initial.id).then(setMembers).catch(e => setErr(e.message)) }
   useEffect(loadMembers, [p.initial.id]) // eslint-disable-line react-hooks/exhaustive-deps
-  const amOwner = store.mode === 'local' || isNew || members.some(m => m.email === p.me.toLowerCase() && m.role === 'owner')
+  const amOwner = store.mode === 'local' || isNew || !!p.initial.isOwner
   const set = (k: keyof Project, v: string) => setPr(x => ({ ...x, [k]: v }))
 
   const save = async () => {
@@ -144,7 +145,6 @@ export function ProjectEditor(p: {
     if (!/^\S+@\S+\.\S+$/.test(email.trim())) return setErr('Enter a valid email.')
     try { await store.addMember(p.initial.id, email, role); setEmail(''); setErr(''); loadMembers() } catch (e) { setErr((e as Error).message) }
   }
-  const owners = members.filter(m => m.role === 'owner').length
 
   return (
     <div className="drawer-wrap" onMouseDown={e => { if (e.target === e.currentTarget) p.onClose() }}>
@@ -164,27 +164,27 @@ export function ProjectEditor(p: {
             <div className="span2"><LabeledInput label="Description"><TextArea value={pr.description} onValueChange={v => set('description', v ?? '')} rows={3} isDisabled={!amOwner} /></LabeledInput></div>
           </div>
 
-          {!isNew && store.mode === 'cloud' && (
+          {!isNew && store.mode === 'google' && (
             <section className="form-group members">
               <Text fontSize="14" fontWeight="600" color="secondary" cx="group-title">MEMBERS</Text>
-              <Text fontSize="12" color="secondary">Only members see this project. Owners manage settings and members; members edit requirements.</Text>
+              <Text fontSize="12" color="secondary">Shared through Google Drive. Editors can change requirements; viewers can only read. Google emails the invitation.</Text>
               {members.map(m => (
                 <FlexRow key={m.email} columnGap="12" cx="member-row">
                   <Text cx="member-email">{m.email}{m.email === p.me.toLowerCase() ? ' (you)' : ''}</Text>
-                  <Badge size="24" fill="outline" color={m.role === 'owner' ? 'info' : 'neutral'} caption={m.role} />
-                  {amOwner && !(m.role === 'owner' && owners === 1) && (
-                    <Button size="24" fill="none" color="critical" caption="Remove" onClick={() => store.removeMember(p.initial.id, m.email).then(loadMembers).catch(e => setErr(e.message))} />
+                  <Badge size="24" fill="outline" color={m.role === 'owner' ? 'info' : m.role === 'member' ? 'success' : 'neutral'} caption={m.role === 'member' ? 'editor' : m.role} />
+                  {amOwner && m.role !== 'owner' && (
+                    <Button size="24" fill="none" color="critical" caption="Remove" onClick={() => store.removeMember(p.initial.id, m).then(loadMembers).catch(e => setErr(e.message))} />
                   )}
                 </FlexRow>
               ))}
               {amOwner && (
                 <FlexRow columnGap="12" cx="member-add">
                   <div className="grow"><TextInput value={email} onValueChange={v => setEmail(v ?? '')} placeholder="colleague@company.com" /></div>
-                  <div className="role"><Select value={role} options={['member', 'owner']} onChange={v => setRole(v as Member['role'])} /></div>
+                  <div className="role"><Select value={role} options={['member', 'viewer']} labels={{ member: 'Editor', viewer: 'Viewer' }} onChange={v => setRole((v || 'member') as Member['role'])} noClear /></div>
                   <Button color="primary" caption="Add" onClick={add} />
                 </FlexRow>
               )}
-              <Text fontSize="12" color="secondary">After adding, the colleague signs in at this app's address with that email.</Text>
+              <Text fontSize="12" color="secondary">The colleague gets an email from Google, opens this app, signs in with Google and clicks “Open shared project”.</Text>
             </section>
           )}
         </div>

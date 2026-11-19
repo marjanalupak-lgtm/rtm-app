@@ -16,7 +16,6 @@
     "@epam/uui": "^6.5.5",
     "@epam/uui-components": "^6.5.5",
     "@epam/uui-core": "^6.5.5",
-    "@supabase/supabase-js": "^2.119.1",
     "exceljs": "^4.4.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

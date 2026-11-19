@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Session } from '@supabase/supabase-js'
 import { useUuiContext } from '@epam/uui-core'
-import { Button, FlexRow, FlexSpacer, SearchInput, TabButton, Text, TextInput, Panel, SuccessNotification, ErrorNotification, LabeledInput, Badge } from '@epam/uui'
+import { Button, FlexRow, FlexSpacer, SearchInput, TabButton, Text, Panel, SuccessNotification, ErrorNotification, Badge } from '@epam/uui'
 import { emptyReq, severity, type Req } from './model'
 import { ConfigContext, defaultConfig, fieldLabel } from './config'
 import { check, nextIdFor } from './rules'
@@ -19,38 +18,30 @@ type Tab = 'projects' | 'dashboard' | 'rtm' | 'settings' | 'guide'
 const TABS: [Tab, string][] = [['projects', 'Projects'], ['dashboard', 'Dashboard'], ['rtm', 'RTM'], ['settings', 'Settings'], ['guide', 'Guide & rules']]
 const ls = { get: (k: string) => { try { return localStorage.getItem(k) ?? '' } catch { return '' } }, set: (k: string, v: string) => { try { localStorage.setItem(k, v) } catch { /* ignore */ } } }
 
-function Login() {
-  const [email, setEmail] = useState('')
-  const [sent, setSent] = useState(false)
+function Login({ reason }: { reason?: string }) {
   const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
   return (
     <div className="login">
       <Panel background="surface-main" shadow cx="login-card">
         <Text fontSize="24" fontWeight="600">RTM</Text>
-        <Text color="secondary">Requirements Traceability Matrix — sign in with your work email.</Text>
-        {sent ? <Text>Check your inbox for a sign-in link.</Text> : (
-          <>
-            <LabeledInput label="Email"><TextInput value={email} onValueChange={v => setEmail(v ?? '')} placeholder="name@company.com" /></LabeledInput>
-            {err && <Text color="critical">{err}</Text>}
-            <Button color="primary" caption="Send sign-in link" onClick={() => store.sendMagicLink(email).then(() => setSent(true)).catch(e => setErr(e.message))} />
-          </>
-        )}
+        <Text color="secondary">Requirements Traceability Matrix. Your projects are stored as Google Sheets in your own Google Drive (folder “RTM”). Only you and the people you share them with can see them.</Text>
+        {reason && <Text color="warning">{reason}</Text>}
+        {err && <Text color="critical">{err}</Text>}
+        <Button color="primary" caption={busy ? 'Signing in…' : 'Sign in with Google'} isDisabled={busy}
+          onClick={() => { setBusy(true); setErr(''); store.signIn().catch(e => setErr(e.message)).finally(() => setBusy(false)) }} />
+        <Text fontSize="12" color="secondary">The app only gets access to files it creates or that you open with it — not the rest of your Drive.</Text>
       </Panel>
     </div>
   )
 }
 
 export default function App() {
-  const [session, setSession] = useState<Session | null>(null)
-  const [authReady, setAuthReady] = useState(store.mode === 'local')
-  useEffect(() => {
-    if (store.mode === 'local') return
-    store.getSession().then(s => { setSession(s); setAuthReady(true) })
-    return store.onAuth(setSession)
-  }, [])
-  if (!authReady) return null
-  if (store.mode === 'cloud' && !session) return <Login />
-  return <Main email={session?.user.email ?? ''} />
+  const [email, setEmail] = useState<string | null>(store.signedInEmail())
+  const [expired, setExpired] = useState(false)
+  useEffect(() => store.onAuthChange(e => { setEmail(prev => { if (prev && !e) setExpired(true); return e }) }), [])
+  if (store.mode === 'google' && !email) return <Login reason={expired ? 'Your Google session expired (they last 1 hour). Sign in again — nothing is lost.' : undefined} />
+  return <Main email={email ?? ''} />
 }
 
 function Main({ email }: { email: string }) {
@@ -132,7 +123,7 @@ function Main({ email }: { email: string }) {
         {store.mode === 'local'
           ? <Badge size="24" color="warning" caption="Local demo — data stays in this browser" />
           : <Text cx="who">{email}</Text>}
-        {store.mode === 'cloud' && <Button fill="none" color="white" caption="Sign out" onClick={() => store.signOut()} />}
+        {store.mode === 'google' && <Button fill="none" color="white" caption="Sign out" onClick={() => store.signOut()} />}
       </header>
 
       <main className="content">
@@ -146,22 +137,23 @@ function Main({ email }: { email: string }) {
             </>}
             <FlexSpacer />
             <Text color="secondary" fontSize="14">{filtered.length} of {rows.length}</Text>
-            <Button fill="outline" color="secondary" caption="Import Excel" onClick={() => fileRef.current?.click()} />
+            {project?.canEdit !== false && <Button fill="outline" color="secondary" caption="Import Excel" onClick={() => fileRef.current?.click()} />}
             <Button fill="outline" color="secondary" caption="Export Excel" onClick={() => import('./excel').then(m => m.exportExcel(filtered, project?.name ?? 'RTM', cfg))} />
-            <Button color="accent" caption="+ Requirement" onClick={() => setEditing({ r: { ...emptyReq(nextIdFor(rows, cfg)), status: cfg.workflow.initial }, isNew: true })} />
+            {project?.canEdit !== false && <Button color="accent" caption="+ Requirement" onClick={() => setEditing({ r: { ...emptyReq(nextIdFor(rows, cfg)), status: cfg.workflow.initial }, isNew: true })} />}
             <input ref={fileRef} type="file" accept=".xlsx,.xlsm" hidden onChange={e => { const f = e.target.files?.[0]; if (f) onImport(f); e.target.value = '' }} />
           </FlexRow>
         )}
-        {activeTab === 'projects' && projects && <ProjectsTab projects={projects} currentId={pid} onOpen={id => { setPid(id); setTab('rtm') }} onEdit={setEditProject} onChanged={loadProjects} notify={notify} />}
+        {activeTab === 'projects' && projects && <ProjectsTab projects={projects} currentId={pid} onOpen={id => { setPid(id); setTab('rtm') }} onEdit={setEditProject} onChanged={loadProjects} notify={notify}
+          onOpenShared={() => store.openSharedProject().then(async id => { if (id) { await loadProjects(); setPid(id); setTab('rtm'); notify('Shared project opened') } }).catch(e => notify(e.message, false))} />}
         {activeTab === 'dashboard' && <Dashboard rows={filtered} onOpen={open} />}
         {activeTab === 'rtm' && <RtmTable rows={filtered} onOpen={open} />}
-        {activeTab === 'settings' && project && <Settings projectId={pid} config={cfg} me={email} onSaved={loadProjects} notify={notify} />}
+        {activeTab === 'settings' && project && <Settings projectId={pid} config={cfg} isOwner={!!project.isOwner} onSaved={loadProjects} notify={notify} />}
         {activeTab === 'guide' && <Guide />}
       </main>
 
       {editing && (
         <Editor
-          projectId={pid} initial={editing.r} isNew={editing.isNew} existingIds={new Set(rows.map(r => r.id))}
+          projectId={pid} readOnly={project?.canEdit === false} initial={editing.r} isNew={editing.isNew} existingIds={new Set(rows.map(r => r.id))}
           onClose={() => setEditing(null)}
           onSave={async r => {
             const prev = editing.isNew ? undefined : rows.find(x => x.id === editing.r.id)

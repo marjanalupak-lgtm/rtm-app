@@ -11,17 +11,13 @@ const SECTIONS: [Section, string][] = [['general', 'IDs'], ['lists', 'Lists'], [
 const CUSTOM_TYPES: CustomType[] = ['text', 'long', 'list', 'link', 'date']
 type ListName = keyof Config['lists']
 
-export function Settings(p: { projectId: string; config: Config; me: string; onSaved: () => void; notify: (m: string, ok?: boolean) => void }) {
+export function Settings(p: { projectId: string; config: Config; isOwner: boolean; onSaved: () => void; notify: (m: string, ok?: boolean) => void }) {
   const [cfg, setCfg] = useState<Config>(p.config)
   const [sec, setSec] = useState<Section>('lists')
   const [listName, setListName] = useState<ListName>('release')
-  const [owner, setOwner] = useState(store.mode === 'local')
+  const owner = store.mode === 'local' || p.isOwner
   const [busy, setBusy] = useState(false)
   useEffect(() => setCfg(p.config), [p.config])
-  useEffect(() => {
-    if (store.mode === 'local') return
-    store.listMembers(p.projectId).then(ms => setOwner(ms.some(m => m.email === p.me.toLowerCase() && m.role === 'owner'))).catch(() => setOwner(false))
-  }, [p.projectId, p.me])
   const dirty = useMemo(() => JSON.stringify(cfg) !== JSON.stringify(p.config), [cfg, p.config])
   const ro = !owner
 

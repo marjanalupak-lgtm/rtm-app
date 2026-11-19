@@ -13,30 +13,34 @@ status rules and the **Traceability Check** formula. UI: EPAM UUI (Loveship).
 - **History**: every change is logged (who, when, field from → to).
 - **Dashboard**: coverage %, gaps, design gaps, failed tests, breakdowns, "needs attention" list.
 - **Excel**: import your RTM.xlsm/xlsx (matched by header names), export to .xlsx.
-- **Team mode**: Supabase database, email sign-in link, live updates for everyone.
+- **Google Drive storage**: sign in with Google, projects are Sheets in your Drive, share with colleagues via Google; changes from others appear within ~20 s.
 
 ## Run locally
     npm install
     npm run dev        # http://localhost:5173
     npm test
 
-Without Supabase keys it runs in **local demo mode** (data stays in your browser).
+Without `VITE_GOOGLE_CLIENT_ID` it runs in **local demo mode** (data stays in your browser).
 
-## Team setup (once)
-1. Create a free project at supabase.com.
-2. SQL Editor → run `supabase/schema.sql`, then `002_projects.sql`, then `003_config.sql`, then `004_trash.sql`.
-3. Authentication → URL Configuration → add your GitHub Pages URL to Redirect URLs.
-4. Project Settings → API → copy `Project URL` and `anon public` key.
-5. Local: copy `.env.example` to `.env.local` and fill both values.
+## Where data lives (Google Drive)
+Each project is a **Google Sheet in the signed-in user's Google Drive** (folder "RTM"), with sheets
+`Requirements`, `History` and `Meta`. The app runs only in the browser and talks directly to Google.
+There is no app server or database. Sharing = Google Drive sharing (Editor / Viewer).
+The app uses the `drive.file` scope: it can only see files it created or that the user opened with it.
+
+## Google Cloud setup (already done for this deployment)
+- Project `rtm-app`: Drive API, Sheets API, Picker API enabled.
+- OAuth consent screen "RTM" (External). While in *Testing*, add users under Google Auth Platform → Audience → Test users.
+- OAuth Web client with origins `https://marjanalupak-lgtm.github.io` and `http://localhost:5174`.
+- Picker API key restricted to those sites and to the Picker API.
+- Public IDs live in `.env.production` (`VITE_GOOGLE_CLIENT_ID`, `VITE_GOOGLE_API_KEY`, `VITE_GOOGLE_APP_ID`).
 
 ## Deploy to GitHub Pages
-1. Create an empty repo on GitHub and push this folder to `main`.
-2. Supabase URL + publishable key live in `.env.production` (safe to be public).
-3. Repo → Settings → Pages → Source: **GitHub Actions**.
-4. Every push to `main` runs tests, builds and publishes.
+Every push to `main` runs tests, builds and publishes (Settings → Pages → Source: GitHub Actions).
 
 ## Files
 - `src/model.ts` — fields, lists, Traceability Check, status rules (tested in `model.test.ts`)
-- `src/store.ts` — Supabase / local data, history, realtime
+- `src/google.ts` — Google sign-in, Drive/Sheets REST, Picker
+- `src/store.ts` — Google Sheets / local data, history, change polling
 - `src/excel.ts` — import / export
-- `supabase/schema.sql` — tables + row-level security
+- `public/privacy.html` — privacy policy (linked from the Google consent screen)

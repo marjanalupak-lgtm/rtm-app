@@ -10,7 +10,7 @@ import { Select, CheckBadge } from './ui'
 const GROUPS: Field['group'][] = ['Core', 'Traceability', 'Design', 'Governance', 'Verification']
 
 export function Editor(p: {
-  projectId: string; initial: Req; isNew: boolean; existingIds: Set<string>
+  projectId: string; readOnly?: boolean; initial: Req; isNew: boolean; existingIds: Set<string>
   onSave: (r: Req) => Promise<void>; onDelete: () => Promise<void>; onClose: () => void
 }) {
   const [r, setR] = useState<Req>(p.initial)
@@ -111,10 +111,11 @@ export function Editor(p: {
           )}
         </div>
         <FlexRow padding="24" vPadding="12" borderBottom={false} columnGap="12" cx="drawer-foot">
-          {!p.isNew && <Button color="critical" fill="outline" caption="Delete" onClick={() => { if (confirm(`Delete ${r.id}? Prefer status "Obsolete" to keep audit trail.`)) p.onDelete() }} />}
+          {p.readOnly && <Text color="secondary">View only — you have viewer access to this project.</Text>}
+          {!p.isNew && !p.readOnly && <Button color="critical" fill="outline" caption="Delete" onClick={() => { if (confirm(`Delete ${r.id}? Prefer status "Obsolete" to keep audit trail.`)) p.onDelete() }} />}
           <FlexSpacer />
           <Button fill="outline" color="secondary" caption="Cancel" onClick={p.onClose} />
-          <Button color="primary" caption={busy ? 'Saving…' : 'Save'} isDisabled={busy} onClick={save} />
+          {!p.readOnly && <Button color="primary" caption={busy ? 'Saving…' : 'Save'} isDisabled={busy} onClick={save} />}
         </FlexRow>
       </Panel>
     </div>

@@ -1,18 +1,22 @@
-// Data layer. Uses Supabase when VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY are set,
-// otherwise a local (browser-only) demo store.
-import { createClient, type SupabaseClient, type Session } from '@supabase/supabase-js'
+// Data layer.
+// - Google mode (VITE_GOOGLE_CLIENT_ID set): every project is a Google Sheet in the user's Drive (folder "RTM"),
+//   with sheets Requirements / History / Meta. Access = Google Drive sharing. No other server sees the data.
+// - Local mode (no client ID): browser-only demo store.
 import { FIELDS, type Req } from './model'
 import { normalize, type Config } from './config'
+import * as G from './google'
 
 export type Change = { field: string; from: string; to: string }
 export type HistoryEntry = { project_id: string; req_id: string; changed_at: string; changed_by: string; action: string; changes: Change[] }
-export type Project = { id: string; name: string; organization: string; description: string; status: string; config?: Config; deleted_at?: string | null; deleted_by?: string | null; created_by?: string; created_at?: string }
-export type Member = { project_id: string; email: string; role: 'owner' | 'member' }
+export type Project = {
+  id: string; name: string; organization: string; description: string; status: string; config?: Config
+  deleted_at?: string | null; deleted_by?: string | null; created_by?: string; created_at?: string
+  owner?: string; isOwner?: boolean; canEdit?: boolean; url?: string
+}
+export type Member = { project_id: string; email: string; role: 'owner' | 'member' | 'viewer'; permId?: string; name?: string }
 
-const URL = import.meta.env.VITE_SUPABASE_URL as string | undefined
-const KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
-export const sb: SupabaseClient | null = URL && KEY ? createClient(URL, KEY) : null
-export const mode: 'cloud' | 'local' = sb ? 'cloud' : 'local'
+export const mode: 'google' | 'local' = G.CLIENT_ID ? 'google' : 'local'
+const GOOGLE = mode === 'google'
 
 const COLS = FIELDS.map(f => f.key)
 
@@ -25,7 +29,6 @@ function clean(r: Req): Req {
   return o as unknown as Req
 }
 
-// labels: optional per-project field labels for history entries.
 export function diff(a: Req | undefined, b: Req, labels: (k: string) => string = k => FIELDS.find(f => f.key === k)?.label ?? k): Change[] {
   const out: Change[] = COLS.filter(k => String(a?.[k] ?? '') !== String(b[k] ?? '')).map(k => ({ field: labels(k), from: String(a?.[k] ?? ''), to: String(b[k] ?? '') }))
   const keys = new Set([...Object.keys(a?.extra ?? {}), ...Object.keys(b.extra ?? {})])
@@ -38,128 +41,310 @@ export function diff(a: Req | undefined, b: Req, labels: (k: string) => string =
 let labelFn: ((k: string) => string) | undefined
 export function setLabels(fn: (k: string) => string) { labelFn = fn }
 
-// ---------- local demo store ----------
+// ---------- auth ----------
+export const currentUser = async () => (GOOGLE ? G.currentEmail() : 'local user') ?? 'unknown'
+export const signedInEmail = () => (GOOGLE ? G.currentEmail() : 'local user')
+export const signIn = () => G.signIn()
+export const signOut = () => G.signOut()
+export const onAuthChange = G.onAuthChange
+export { AuthError } from './google'
+
+// ======================================================================
+// Google Sheets backend
+// ======================================================================
+const REQ_COLS = [...COLS, 'extra', 'updated_at', 'updated_by'] as const
+const REQ_HEAD = [...FIELDS.map(f => f.label), 'Custom fields (JSON)', 'Updated at', 'Updated by']
+const HIST_HEAD = ['Changed at', 'Changed by', 'Action', 'Requirement ID', 'Changes (JSON)']
+const col = (n: number) => { let s = ''; for (n++; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + ((n - 1) % 26)) + s; return s }
+const LAST = col(REQ_COLS.length - 1)
+const enc = encodeURIComponent
+
+type Meta = { organization?: string; description?: string; status?: string; config?: unknown; created_by?: string; created_at?: string }
+type DriveFile = { id: string; name: string; trashed?: boolean; webViewLink?: string; appProperties?: Record<string, string>; owners?: { emailAddress: string }[]; capabilities?: { canEdit?: boolean } }
+
+function rowToReq(row: string[]): Req {
+  const o: Record<string, unknown> = {}
+  REQ_COLS.forEach((k, i) => { o[k] = row[i] ?? '' })
+  try { o.extra = o.extra ? JSON.parse(String(o.extra)) : {} } catch { o.extra = {} }
+  return o as unknown as Req
+}
+function reqToRow(r: Req, who: string, now: string): string[] {
+  const c = clean(r)
+  return [...COLS.map(k => String(c[k] ?? '')), Object.keys(c.extra ?? {}).length ? JSON.stringify(c.extra) : '', now, who]
+}
+const same = (a: Req, b: Req) => diff(clean(a), clean(b)).length === 0
+
+async function getValues(id: string, range: string): Promise<string[][]> {
+  const r = await G.api<{ values?: string[][] }>(`${G.SHEETS}/${id}/values/${enc(range)}`)
+  return r.values ?? []
+}
+async function putValues(id: string, range: string, values: string[][]) {
+  await G.api(`${G.SHEETS}/${id}/values/${enc(range)}${G.q({ valueInputOption: 'RAW' })}`, { method: 'PUT', body: JSON.stringify({ values }) })
+}
+async function appendValues(id: string, range: string, values: string[][]) {
+  if (!values.length) return
+  await G.api(`${G.SHEETS}/${id}/values/${enc(range)}:append${G.q({ valueInputOption: 'RAW', insertDataOption: 'INSERT_ROWS' })}`, { method: 'POST', body: JSON.stringify({ values }) })
+}
+async function readMeta(id: string): Promise<Meta> {
+  const v = await getValues(id, 'Meta!A1')
+  try { return JSON.parse(v[0]?.[0] ?? '{}') } catch { return {} }
+}
+const writeMeta = (id: string, m: Meta) => putValues(id, 'Meta!A1:A2', [[JSON.stringify(m)], ['Managed by the RTM app — please do not edit this sheet.']])
+
+let rootId: string | null = null
+async function ensureRoot(): Promise<string> {
+  if (rootId) return rootId
+  const r = await G.api<{ files: DriveFile[] }>(G.DRIVE + G.q({ q: "appProperties has { key='rtm' and value='root' } and trashed=false and 'me' in owners", fields: 'files(id)' }))
+  if (r.files[0]) return rootId = r.files[0].id
+  const f = await G.api<DriveFile>(G.DRIVE + G.q({ fields: 'id' }), { method: 'POST', body: JSON.stringify({ name: 'RTM', mimeType: 'application/vnd.google-apps.folder', appProperties: { rtm: 'root' } }) })
+  return rootId = f.id
+}
+
+const sheetIds = new Map<string, number>()
+async function reqSheetId(id: string): Promise<number> {
+  if (sheetIds.has(id)) return sheetIds.get(id)!
+  const s = await G.api<{ sheets: { properties: { sheetId: number; title: string } }[] }>(`${G.SHEETS}/${id}${G.q({ fields: 'sheets.properties(sheetId,title)' })}`)
+  const sid = s.sheets.find(x => x.properties.title === 'Requirements')?.properties.sheetId ?? 0
+  sheetIds.set(id, sid)
+  return sid
+}
+
+const gdrive = {
+  async listProjects(): Promise<Project[]> {
+    const me = G.currentEmail()
+    const r = await G.api<{ files: DriveFile[] }>(G.DRIVE + G.q({
+      q: "appProperties has { key='rtm' and value='project' }", pageSize: 200,
+      fields: 'files(id,name,trashed,webViewLink,appProperties,owners(emailAddress),capabilities(canEdit))',
+    }))
+    return Promise.all(r.files.map(async f => {
+      const m = await readMeta(f.id).catch(() => ({} as Meta))
+      const owner = f.owners?.[0]?.emailAddress?.toLowerCase()
+      return {
+        id: f.id, name: f.name, organization: m.organization ?? '', description: m.description ?? '', status: m.status ?? 'Active',
+        config: normalize(m.config), created_by: m.created_by, created_at: m.created_at, url: f.webViewLink,
+        deleted_at: f.trashed ? (f.appProperties?.deleted_at || 'unknown') : null, deleted_by: f.trashed ? f.appProperties?.deleted_by ?? null : null,
+        owner, isOwner: !!owner && owner === me, canEdit: !!f.capabilities?.canEdit,
+      }
+    }))
+  },
+
+  async saveProject(p: Project): Promise<Project> {
+    const meta = { organization: p.organization.trim(), description: p.description.trim(), status: p.status || 'Active' }
+    if (p.id) {
+      await G.api(`${G.DRIVE}/${p.id}`, { method: 'PATCH', body: JSON.stringify({ name: p.name.trim() }) })
+      const old = await readMeta(p.id)
+      await writeMeta(p.id, { ...old, ...meta })
+      return { ...p, ...meta, name: p.name.trim() }
+    }
+    const root = await ensureRoot()
+    const f = await G.api<DriveFile>(G.DRIVE + G.q({ fields: 'id,webViewLink' }), {
+      method: 'POST', body: JSON.stringify({ name: p.name.trim(), mimeType: 'application/vnd.google-apps.spreadsheet', parents: [root], appProperties: { rtm: 'project' } }),
+    })
+    await G.api(`${G.SHEETS}/${f.id}:batchUpdate`, { method: 'POST', body: JSON.stringify({ requests: [
+      { updateSheetProperties: { properties: { sheetId: 0, title: 'Requirements', gridProperties: { frozenRowCount: 1, frozenColumnCount: 1 } }, fields: 'title,gridProperties.frozenRowCount,gridProperties.frozenColumnCount' } },
+      { addSheet: { properties: { title: 'History', gridProperties: { frozenRowCount: 1 } } } },
+      { addSheet: { properties: { title: 'Meta' } } },
+      { repeatCell: { range: { sheetId: 0, startRowIndex: 0, endRowIndex: 1 }, cell: { userEnteredFormat: { textFormat: { bold: true } } }, fields: 'userEnteredFormat.textFormat.bold' } },
+    ] }) })
+    const now = new Date().toISOString(), me = G.currentEmail() ?? ''
+    await G.api(`${G.SHEETS}/${f.id}/values:batchUpdate`, { method: 'POST', body: JSON.stringify({ valueInputOption: 'RAW', data: [
+      { range: `Requirements!A1:${LAST}1`, values: [REQ_HEAD] },
+      { range: 'History!A1:E1', values: [HIST_HEAD] },
+      { range: 'Meta!A1:A2', values: [[JSON.stringify({ ...meta, created_by: me, created_at: now })], ['Managed by the RTM app — please do not edit this sheet.']] },
+    ] }) })
+    sheetIds.set(f.id, 0)
+    return { ...p, ...meta, id: f.id, name: p.name.trim(), config: normalize(undefined), owner: me, isOwner: true, canEdit: true, url: f.webViewLink }
+  },
+
+  async saveConfig(id: string, config: Config) {
+    const m = await readMeta(id)
+    await writeMeta(id, { ...m, config })
+  },
+
+  async setTrashed(id: string, trashed: boolean) {
+    const props = trashed ? { deleted_at: new Date().toISOString(), deleted_by: G.currentEmail() ?? '' } : { deleted_at: null, deleted_by: null }
+    await G.api(`${G.DRIVE}/${id}`, { method: 'PATCH', body: JSON.stringify({ trashed, appProperties: props }) })
+  },
+
+  async purge(id: string) {
+    const f = await G.api<DriveFile>(`${G.DRIVE}/${id}${G.q({ fields: 'trashed' })}`)
+    if (!f.trashed) throw new Error('Move the project to trash first.')
+    await G.api(`${G.DRIVE}/${id}`, { method: 'DELETE' })
+  },
+
+  async openShared(): Promise<string | null> {
+    const pick = await G.pickSpreadsheet()
+    if (!pick) return null
+    const f = await G.api<DriveFile>(`${G.DRIVE}/${pick.id}${G.q({ fields: 'id,appProperties' })}`)
+    if (f.appProperties?.rtm !== 'project') throw new Error(`"${pick.name}" is not an RTM project.`)
+    return f.id
+  },
+
+  async listMembers(id: string): Promise<Member[]> {
+    const r = await G.api<{ permissions: { id: string; emailAddress?: string; role: string; type: string; displayName?: string }[] }>(
+      `${G.DRIVE}/${id}/permissions${G.q({ fields: 'permissions(id,emailAddress,role,type,displayName)' })}`)
+    const role = (x: string): Member['role'] => x === 'owner' ? 'owner' : x === 'writer' || x === 'organizer' || x === 'fileOrganizer' ? 'member' : 'viewer'
+    return r.permissions.filter(p => p.type === 'user' && p.emailAddress)
+      .map(p => ({ project_id: id, email: p.emailAddress!.toLowerCase(), role: role(p.role), permId: p.id, name: p.displayName }))
+      .sort((a, b) => ['owner', 'member', 'viewer'].indexOf(a.role) - ['owner', 'member', 'viewer'].indexOf(b.role))
+  },
+  async addMember(id: string, email: string, role: Member['role']) {
+    const msg = `You were added to an RTM project. Open ${location.origin}${location.pathname} , sign in with Google, then use "Open shared project" and pick this file.`
+    await G.api(`${G.DRIVE}/${id}/permissions${G.q({ sendNotificationEmail: true, emailMessage: msg })}`, {
+      method: 'POST', body: JSON.stringify({ type: 'user', role: role === 'viewer' ? 'reader' : 'writer', emailAddress: email.trim().toLowerCase() }),
+    })
+  },
+  async removeMember(id: string, m: Member) {
+    if (!m.permId) return
+    await G.api(`${G.DRIVE}/${id}/permissions/${m.permId}`, { method: 'DELETE' })
+  },
+
+  async listReqs(id: string): Promise<Req[]> {
+    return (await getValues(id, `Requirements!A2:${LAST}`)).map(rowToReq).filter(r => r.id || r.statement)
+  },
+
+  async saveReq(id: string, r: Req, prev: Req | undefined, h: HistoryEntry, who: string, now: string) {
+    const rows = await getValues(id, `Requirements!A2:${LAST}`)
+    const i = rows.findIndex(x => (x[0] ?? '').trim() === r.id.trim())
+    if (!prev && i >= 0) throw new Error(`ID ${r.id} already exists. IDs are never reused.`)
+    if (prev && i >= 0 && !same(rowToReq(rows[i]), prev)) throw new Error(`${r.id} was changed by someone else (${rows[i][REQ_COLS.length - 1] || 'unknown'}) since you opened it. Close the form to reload, then apply your change again.`)
+    const row = reqToRow(r, who, now)
+    if (i >= 0) await putValues(id, `Requirements!A${i + 2}:${LAST}${i + 2}`, [row])
+    else await appendValues(id, `Requirements!A1:${LAST}1`, [row])
+    await appendValues(id, 'History!A1:E1', [[h.changed_at, h.changed_by, h.action, h.req_id, JSON.stringify(h.changes)]])
+  },
+
+  async bulkSave(id: string, incoming: Req[], labels?: (k: string) => string): Promise<number> {
+    const who = G.currentEmail() ?? '', now = new Date().toISOString()
+    const rows = await getValues(id, `Requirements!A2:${LAST}`)
+    const table = rows.map(x => [...x, ...Array(Math.max(0, REQ_COLS.length - x.length)).fill('')])
+    const index = new Map(table.map((x, i) => [(x[0] ?? '').trim(), i]))
+    const hist: string[][] = []
+    for (const r of incoming) {
+      if (!r.id) continue
+      const i = index.get(r.id.trim())
+      const prev = i === undefined ? undefined : rowToReq(table[i])
+      const changes = diff(prev, clean(r), labels)
+      if (prev && !changes.length) continue
+      const row = reqToRow(r, who, now)
+      if (i === undefined) { index.set(r.id.trim(), table.length); table.push(row) } else table[i] = row
+      hist.push([now, who, prev ? 'import-update' : 'import', r.id, JSON.stringify(changes)])
+    }
+    if (!hist.length) return 0
+    await putValues(id, `Requirements!A2:${LAST}${table.length + 1}`, table)
+    await appendValues(id, 'History!A1:E1', hist)
+    return hist.length
+  },
+
+  async deleteReq(id: string, r: Req, h: HistoryEntry) {
+    const rows = await getValues(id, 'Requirements!A2:A')
+    const i = rows.findIndex(x => (x[0] ?? '').trim() === r.id.trim())
+    if (i < 0) return
+    await G.api(`${G.SHEETS}/${id}:batchUpdate`, { method: 'POST', body: JSON.stringify({ requests: [
+      { deleteDimension: { range: { sheetId: await reqSheetId(id), dimension: 'ROWS', startIndex: i + 1, endIndex: i + 2 } } },
+    ] }) })
+    await appendValues(id, 'History!A1:E1', [[h.changed_at, h.changed_by, h.action, h.req_id, '[]']])
+  },
+
+  async history(id: string, reqId?: string): Promise<HistoryEntry[]> {
+    const rows = await getValues(id, 'History!A2:E')
+    return rows.map(x => {
+      let changes: Change[] = []
+      try { changes = JSON.parse(x[4] || '[]') } catch { /* ignore */ }
+      return { project_id: id, changed_at: x[0] ?? '', changed_by: x[1] ?? '', action: x[2] ?? '', req_id: x[3] ?? '', changes }
+    }).filter(h => !reqId || h.req_id === reqId).reverse().slice(0, 500)
+  },
+
+  subscribe(id: string, onChange: () => void): () => void {
+    let last = ''
+    const tick = async () => {
+      if (document.hidden || !G.currentEmail()) return
+      try {
+        const f = await G.api<{ modifiedTime: string }>(`${G.DRIVE}/${id}${G.q({ fields: 'modifiedTime' })}`)
+        if (last && f.modifiedTime !== last) onChange()
+        last = f.modifiedTime
+      } catch { /* ignore polling errors */ }
+    }
+    tick()
+    const t = window.setInterval(tick, 20_000)
+    return () => window.clearInterval(t)
+  },
+}
+
+// ======================================================================
+// Local demo backend (browser only)
+// ======================================================================
 const LK = 'rtm.rows.v2', LH = 'rtm.history.v2', LP = 'rtm.projects.v1'
 const read = <T,>(k: string, d: T): T => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) as T : d } catch { return d } }
 const write = (k: string, v: unknown) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch { /* ignore */ } }
 type LocalReq = Req & { project_id: string }
 
-// ---------- auth ----------
-export async function currentUser(): Promise<string> {
-  if (!sb) return 'local user'
-  const { data } = await sb.auth.getUser()
-  return data.user?.email ?? 'unknown'
-}
-export async function getSession(): Promise<Session | null> {
-  if (!sb) return null
-  return (await sb.auth.getSession()).data.session
-}
-export function onAuth(cb: (s: Session | null) => void): () => void {
-  if (!sb) return () => {}
-  const { data } = sb.auth.onAuthStateChange((_e, s) => cb(s))
-  return () => data.subscription.unsubscribe()
-}
-export async function sendMagicLink(email: string) {
-  if (!sb) return
-  const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: window.location.href.split('#')[0] } })
-  if (error) throw error
-}
-export async function signOut() { await sb?.auth.signOut() }
-
-// ---------- projects ----------
+// ======================================================================
+// Public API (same for both backends)
+// ======================================================================
 export async function listProjects(): Promise<Project[]> {
-  const raw: Project[] = sb ? await (async () => {
-    const { data, error } = await sb.from('projects').select('*').order('name')
-    if (error) throw error
-    return data as Project[]
-  })() : read<Project[]>(LP, [])
-  return raw.map(p => ({ ...p, config: normalize(p.config) }))
+  if (GOOGLE) return gdrive.listProjects()
+  return read<Project[]>(LP, []).map(p => ({ ...p, config: normalize(p.config), isOwner: true, canEdit: true }))
 }
 
 export async function saveConfig(projectId: string, config: Config): Promise<void> {
-  if (!sb) {
-    write(LP, read<Project[]>(LP, []).map(p => p.id === projectId ? { ...p, config } : p))
-    return
-  }
-  const { data, error } = await sb.from('projects').update({ config }).eq('id', projectId).select('id')
-  if (error) throw error
-  if (!data?.length) throw new Error('Only project owners can change settings.')
+  if (GOOGLE) return gdrive.saveConfig(projectId, config)
+  write(LP, read<Project[]>(LP, []).map(p => p.id === projectId ? { ...p, config } : p))
 }
 
 export async function saveProject(p: Project): Promise<Project> {
+  if (GOOGLE) return gdrive.saveProject(p)
   const row = { name: p.name.trim(), organization: p.organization.trim(), description: p.description.trim(), status: p.status || 'Active' }
-  if (!sb) {
-    const all = read<Project[]>(LP, [])
-    const saved = { ...p, ...row, id: p.id || crypto.randomUUID(), created_at: p.created_at || new Date().toISOString() }
-    const i = all.findIndex(x => x.id === saved.id)
-    if (i >= 0) all[i] = saved; else all.push(saved)
-    write(LP, all)
-    return saved
-  }
-  const q = p.id ? sb.from('projects').update(row).eq('id', p.id) : sb.from('projects').insert(row)
-  const { data, error } = await q.select().single()
-  if (error) throw error
-  return data as Project
+  const all = read<Project[]>(LP, [])
+  const saved = { ...p, ...row, id: p.id || crypto.randomUUID(), created_at: p.created_at || new Date().toISOString() }
+  const i = all.findIndex(x => x.id === saved.id)
+  if (i >= 0) all[i] = saved; else all.push(saved)
+  write(LP, all)
+  return saved
 }
 
-// Soft delete: move to trash (restorable). Hard delete only for trashed projects (also enforced in the database).
 async function setDeleted(id: string, deleted: boolean): Promise<void> {
-  const patch = { deleted_at: deleted ? new Date().toISOString() : null, deleted_by: deleted ? await currentUser() : null }
-  if (!sb) { write(LP, read<Project[]>(LP, []).map(p => p.id === id ? { ...p, ...patch } : p)); return }
-  const { data, error } = await sb.from('projects').update(patch).eq('id', id).select('id')
-  if (error) throw error
-  if (!data?.length) throw new Error('Only project owners can do this.')
+  if (GOOGLE) return gdrive.setTrashed(id, deleted)
+  const patch = { deleted_at: deleted ? new Date().toISOString() : null, deleted_by: deleted ? 'local user' : null }
+  write(LP, read<Project[]>(LP, []).map(p => p.id === id ? { ...p, ...patch } : p))
 }
 export const trashProject = (id: string) => setDeleted(id, true)
 export const restoreProject = (id: string) => setDeleted(id, false)
 
 export async function purgeProject(id: string): Promise<void> {
-  if (!sb) {
-    const p = read<Project[]>(LP, []).find(x => x.id === id)
-    if (!p?.deleted_at) throw new Error('Move the project to trash first.')
-    write(LP, read<Project[]>(LP, []).filter(x => x.id !== id))
-    write(LK, read<LocalReq[]>(LK, []).filter(r => r.project_id !== id))
-    return
-  }
-  const { data, error } = await sb.from('projects').delete().eq('id', id).not('deleted_at', 'is', null).select('id')
-  if (error) throw error
-  if (!data?.length) throw new Error('Not deleted: only owners can delete, and only projects in trash.')
+  if (GOOGLE) return gdrive.purge(id)
+  const p = read<Project[]>(LP, []).find(x => x.id === id)
+  if (!p?.deleted_at) throw new Error('Move the project to trash first.')
+  write(LP, read<Project[]>(LP, []).filter(x => x.id !== id))
+  write(LK, read<LocalReq[]>(LK, []).filter(r => r.project_id !== id))
 }
 
-export async function projectStats(): Promise<Record<string, Req[]>> {
-  // Rows for every visible project (used for project cards).
-  const rows: LocalReq[] = sb
-    ? ((await sb.from('requirements').select('*')).data ?? []) as LocalReq[]
-    : read<LocalReq[]>(LK, [])
+export const openSharedProject = () => (GOOGLE ? gdrive.openShared() : Promise.resolve(null))
+
+export async function projectStats(projects: Project[]): Promise<Record<string, Req[]>> {
+  if (GOOGLE) {
+    const out: Record<string, Req[]> = {}
+    await Promise.all(projects.map(async p => { out[p.id] = await gdrive.listReqs(p.id).catch(() => []) }))
+    return out
+  }
   const out: Record<string, Req[]> = {}
-  for (const r of rows) (out[r.project_id] ??= []).push(r)
+  for (const r of read<LocalReq[]>(LK, [])) (out[r.project_id] ??= []).push(r)
   return out
 }
 
-// ---------- members (cloud only) ----------
 export async function listMembers(projectId: string): Promise<Member[]> {
-  if (!sb) return []
-  const { data, error } = await sb.from('project_members').select('*').eq('project_id', projectId).order('role', { ascending: false })
-  if (error) throw error
-  return data as Member[]
+  return GOOGLE ? gdrive.listMembers(projectId) : []
 }
 export async function addMember(projectId: string, email: string, role: Member['role']) {
-  if (!sb) return
-  const { error } = await sb.from('project_members').upsert({ project_id: projectId, email: email.trim().toLowerCase(), role })
-  if (error) throw error
+  if (GOOGLE) await gdrive.addMember(projectId, email, role)
 }
-export async function removeMember(projectId: string, email: string) {
-  if (!sb) return
-  const { error } = await sb.from('project_members').delete().eq('project_id', projectId).eq('email', email)
-  if (error) throw error
+export async function removeMember(projectId: string, m: Member) {
+  if (GOOGLE) await gdrive.removeMember(projectId, m)
 }
 
-// ---------- requirements ----------
 export async function listReqs(projectId: string): Promise<Req[]> {
-  if (!sb) return read<LocalReq[]>(LK, []).filter(r => r.project_id === projectId)
-  const { data, error } = await sb.from('requirements').select('*').eq('project_id', projectId).order('id')
-  if (error) throw error
-  return data as Req[]
+  if (GOOGLE) return gdrive.listReqs(projectId)
+  return read<LocalReq[]>(LK, []).filter(r => r.project_id === projectId)
 }
 
 export async function saveReq(projectId: string, r: Req, prev: Req | undefined, action = prev ? 'update' : 'create'): Promise<void> {
@@ -169,21 +354,17 @@ export async function saveReq(projectId: string, r: Req, prev: Req | undefined, 
   const who = await currentUser()
   const now = new Date().toISOString()
   const h: HistoryEntry = { project_id: projectId, req_id: row.id, changed_at: now, changed_by: who, action, changes }
-  if (!sb) {
-    const rows = read<LocalReq[]>(LK, [])
-    const i = rows.findIndex(x => x.project_id === projectId && x.id === row.id)
-    const full = { ...row, project_id: projectId, updated_at: now, updated_by: who }
-    if (i >= 0) rows[i] = full; else rows.push(full)
-    write(LK, rows)
-    write(LH, [h, ...read<HistoryEntry[]>(LH, [])].slice(0, 5000))
-    return
-  }
-  const { error } = await sb.from('requirements').upsert({ ...row, project_id: projectId, updated_at: now, updated_by: who })
-  if (error) throw error
-  await sb.from('requirement_history').insert(h)
+  if (GOOGLE) return gdrive.saveReq(projectId, row, prev, h, who, now)
+  const rows = read<LocalReq[]>(LK, [])
+  const i = rows.findIndex(x => x.project_id === projectId && x.id === row.id)
+  const full = { ...row, project_id: projectId, updated_at: now, updated_by: who }
+  if (i >= 0) rows[i] = full; else rows.push(full)
+  write(LK, rows)
+  write(LH, [h, ...read<HistoryEntry[]>(LH, [])].slice(0, 5000))
 }
 
 export async function bulkSave(projectId: string, rows: Req[], existing: Req[]): Promise<number> {
+  if (GOOGLE) return gdrive.bulkSave(projectId, rows, labelFn)
   const byId = new Map(existing.map(r => [r.id, r]))
   let n = 0
   for (const r of rows) {
@@ -199,33 +380,19 @@ export async function bulkSave(projectId: string, rows: Req[], existing: Req[]):
 export async function deleteReq(projectId: string, r: Req): Promise<void> {
   const who = await currentUser()
   const h: HistoryEntry = { project_id: projectId, req_id: r.id, changed_at: new Date().toISOString(), changed_by: who, action: 'delete', changes: [] }
-  if (!sb) {
-    write(LK, read<LocalReq[]>(LK, []).filter(x => !(x.project_id === projectId && x.id === r.id)))
-    write(LH, [h, ...read<HistoryEntry[]>(LH, [])])
-    return
-  }
-  const { error } = await sb.from('requirements').delete().eq('project_id', projectId).eq('id', r.id)
-  if (error) throw error
-  await sb.from('requirement_history').insert(h)
+  if (GOOGLE) return gdrive.deleteReq(projectId, r, h)
+  write(LK, read<LocalReq[]>(LK, []).filter(x => !(x.project_id === projectId && x.id === r.id)))
+  write(LH, [h, ...read<HistoryEntry[]>(LH, [])])
 }
 
 export async function history(projectId: string, id?: string): Promise<HistoryEntry[]> {
-  if (!sb) return read<HistoryEntry[]>(LH, []).filter(h => h.project_id === projectId && (!id || h.req_id === id))
-  let q = sb.from('requirement_history').select('*').eq('project_id', projectId).order('changed_at', { ascending: false }).limit(500)
-  if (id) q = q.eq('req_id', id)
-  const { data, error } = await q
-  if (error) throw error
-  return data as HistoryEntry[]
+  if (GOOGLE) return gdrive.history(projectId, id)
+  return read<HistoryEntry[]>(LH, []).filter(h => h.project_id === projectId && (!id || h.req_id === id))
 }
 
 export function subscribe(projectId: string, onChange: () => void): () => void {
-  if (!sb) {
-    const h = (e: StorageEvent) => { if (e.key === LK) onChange() }
-    window.addEventListener('storage', h)
-    return () => window.removeEventListener('storage', h)
-  }
-  const ch = sb.channel('rtm-' + projectId)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'requirements', filter: `project_id=eq.${projectId}` }, onChange)
-    .subscribe()
-  return () => { sb.removeChannel(ch) }
+  if (GOOGLE) return gdrive.subscribe(projectId, onChange)
+  const h = (e: StorageEvent) => { if (e.key === LK) onChange() }
+  window.addEventListener('storage', h)
+  return () => window.removeEventListener('storage', h)
 }
