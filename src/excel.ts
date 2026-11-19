@@ -16,6 +16,7 @@ export async function exportExcel(rows: Req[], name = 'RTM', cfg: Config = defau
     if (f.key === 'defect') cols.push({ label: 'Traceability Check', get: r => check(r, cfg) })
   }
   for (const c of cfg.custom) cols.push({ label: c.label + (c.required ? '*' : ''), get: r => getVal(r, c.key) })
+  cols.push({ label: 'Attachments & links', get: r => (r.attachments ?? []).map(x => `${x.name}: ${x.url}`).join('\n'), wide: true })
   ws.addRow(cols.map(c => c.label))
   ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }
   ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F3A5F' } }

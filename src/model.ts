@@ -14,6 +14,8 @@ export const LISTS = {
 
 export type ListKey = keyof typeof LISTS
 
+export type Attachment = { id: string; kind: 'file' | 'link'; name: string; url: string; fileId?: string; mime?: string; size?: number; added_by: string; added_at: string }
+
 export type Req = {
   id: string            // A Requirement ID*
   date_added: string    // B
@@ -43,6 +45,7 @@ export type Req = {
   defect: string        // Z
   notes: string         // AB
   extra?: Record<string, string> // custom fields (per-project config)
+  attachments?: Attachment[]      // files (Google Drive) and links
   updated_at?: string
   updated_by?: string
 }

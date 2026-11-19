@@ -2,7 +2,7 @@
 // - Google mode (VITE_GOOGLE_CLIENT_ID set): every project is a Google Sheet in the user's Drive (folder "RTM"),
 //   with sheets Requirements / History / Meta. Access = Google Drive sharing. No other server sees the data.
 // - Local mode (no client ID): browser-only demo store.
-import { FIELDS, type Req } from './model'
+import { FIELDS, type Req, type Attachment } from './model'
 import { normalize, type Config } from './config'
 import * as G from './google'
 
@@ -26,6 +26,7 @@ function clean(r: Req): Req {
   const extra: Record<string, string> = {}
   for (const [k, v] of Object.entries(r.extra ?? {})) if (String(v ?? '').trim()) extra[k] = String(v).trim()
   o.extra = extra
+  o.attachments = (r.attachments ?? []).filter(a => a && a.url)
   return o as unknown as Req
 }
 
@@ -36,6 +37,9 @@ export function diff(a: Req | undefined, b: Req, labels: (k: string) => string =
     const x = String(a?.extra?.[k] ?? ''), y = String(b.extra?.[k] ?? '')
     if (x !== y) out.push({ field: labels(k), from: x, to: y })
   }
+  const names = (r?: Req) => (r?.attachments ?? []).map(a => a.name).join(', ')
+  const sig = (r?: Req) => (r?.attachments ?? []).map(a => a.id).join('|')
+  if (sig(a) !== sig(b)) out.push({ field: 'Attachments & links', from: names(a), to: names(b) })
   return out
 }
 let labelFn: ((k: string) => string) | undefined
@@ -52,8 +56,8 @@ export { AuthError } from './google'
 // ======================================================================
 // Google Sheets backend
 // ======================================================================
-const REQ_COLS = [...COLS, 'extra', 'updated_at', 'updated_by'] as const
-const REQ_HEAD = [...FIELDS.map(f => f.label), 'Custom fields (JSON)', 'Updated at', 'Updated by']
+const REQ_COLS = [...COLS, 'extra', 'updated_at', 'updated_by', 'attachments'] as const
+const REQ_HEAD = [...FIELDS.map(f => f.label), 'Custom fields (JSON)', 'Updated at', 'Updated by', 'Attachments & links (JSON)']
 const HIST_HEAD = ['Changed at', 'Changed by', 'Action', 'Requirement ID', 'Changes (JSON)']
 const col = (n: number) => { let s = ''; for (n++; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + ((n - 1) % 26)) + s; return s }
 const LAST = col(REQ_COLS.length - 1)
@@ -66,11 +70,12 @@ function rowToReq(row: string[]): Req {
   const o: Record<string, unknown> = {}
   REQ_COLS.forEach((k, i) => { o[k] = row[i] ?? '' })
   try { o.extra = o.extra ? JSON.parse(String(o.extra)) : {} } catch { o.extra = {} }
+  try { o.attachments = o.attachments ? JSON.parse(String(o.attachments)) : [] } catch { o.attachments = [] }
   return o as unknown as Req
 }
 function reqToRow(r: Req, who: string, now: string): string[] {
   const c = clean(r)
-  return [...COLS.map(k => String(c[k] ?? '')), Object.keys(c.extra ?? {}).length ? JSON.stringify(c.extra) : '', now, who]
+  return [...COLS.map(k => String(c[k] ?? '')), Object.keys(c.extra ?? {}).length ? JSON.stringify(c.extra) : '', now, who, c.attachments?.length ? JSON.stringify(c.attachments) : '']
 }
 const same = (a: Req, b: Req) => diff(clean(a), clean(b)).length === 0
 
@@ -98,6 +103,35 @@ async function ensureRoot(): Promise<string> {
   if (r.files[0]) return rootId = r.files[0].id
   const f = await G.api<DriveFile>(G.DRIVE + G.q({ fields: 'id' }), { method: 'POST', body: JSON.stringify({ name: 'RTM', mimeType: 'application/vnd.google-apps.folder', appProperties: { rtm: 'root' } }) })
   return rootId = f.id
+}
+
+// Older project sheets were created before a column existed: write the full header row once per session.
+const headerOk = new Set<string>()
+async function ensureHeader(id: string) {
+  if (headerOk.has(id)) return
+  const h = await getValues(id, `Requirements!A1:${LAST}1`)
+  if ((h[0]?.length ?? 0) < REQ_HEAD.length) await putValues(id, `Requirements!A1:${LAST}1`, [REQ_HEAD])
+  headerOk.add(id)
+}
+
+// Attachment files live in the uploader's Drive (folder RTM/Attachments) and are shared read-only with project members.
+let attFolder: string | null = null
+async function ensureAttachmentFolder(): Promise<string> {
+  if (attFolder) return attFolder
+  const root = await ensureRoot()
+  const r = await G.api<{ files: DriveFile[] }>(G.DRIVE + G.q({ q: "appProperties has { key='rtm' and value='attachments' } and trashed=false and 'me' in owners", fields: 'files(id)' }))
+  if (r.files[0]) return attFolder = r.files[0].id
+  const f = await G.api<DriveFile>(G.DRIVE + G.q({ fields: 'id' }), { method: 'POST', body: JSON.stringify({ name: 'Attachments', mimeType: 'application/vnd.google-apps.folder', parents: [root], appProperties: { rtm: 'attachments' } }) })
+  return attFolder = f.id
+}
+async function memberEmails(projectId: string): Promise<{ email: string; role: string }[]> {
+  try {
+    const r = await G.api<{ permissions: { emailAddress?: string; role: string; type: string }[] }>(`${G.DRIVE}/${projectId}/permissions${G.q({ fields: 'permissions(emailAddress,role,type)' })}`)
+    return r.permissions.filter(p => p.type === 'user' && p.emailAddress).map(p => ({ email: p.emailAddress!.toLowerCase(), role: p.role }))
+  } catch { return [] }   // non-owners may not be allowed to list permissions
+}
+async function shareRead(fileId: string, email: string) {
+  await G.api(`${G.DRIVE}/${fileId}/permissions${G.q({ sendNotificationEmail: false })}`, { method: 'POST', body: JSON.stringify({ type: 'user', role: 'reader', emailAddress: email }) }).catch(() => {})
 }
 
 const sheetIds = new Map<string, number>()
@@ -170,6 +204,9 @@ const gdrive = {
     const f = await G.api<DriveFile>(`${G.DRIVE}/${id}${G.q({ fields: 'trashed' })}`)
     if (!f.trashed) throw new Error('Move the project to trash first.')
     await G.api(`${G.DRIVE}/${id}`, { method: 'DELETE' })
+    // Its attachment files (the ones this user owns) go too.
+    const att = await G.api<{ files: DriveFile[] }>(G.DRIVE + G.q({ q: `appProperties has { key='project' and value='${id}' } and 'me' in owners`, fields: 'files(id)', pageSize: 1000 })).catch(() => ({ files: [] as DriveFile[] }))
+    for (const x of att.files) await G.api(`${G.DRIVE}/${x.id}`, { method: 'DELETE' }).catch(() => {})
   },
 
   async openShared(): Promise<string | null> {
@@ -188,11 +225,37 @@ const gdrive = {
       .map(p => ({ project_id: id, email: p.emailAddress!.toLowerCase(), role: role(p.role), permId: p.id, name: p.displayName }))
       .sort((a, b) => ['owner', 'member', 'viewer'].indexOf(a.role) - ['owner', 'member', 'viewer'].indexOf(b.role))
   },
+  async uploadAttachment(projectId: string, reqId: string, file: File): Promise<Attachment> {
+    const folder = await ensureAttachmentFolder()
+    const meta = { name: file.name, parents: [folder], appProperties: { rtm: 'attachment', project: projectId, req: reqId } }
+    const start = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id,webViewLink,mimeType,size', {
+      method: 'POST', headers: { Authorization: 'Bearer ' + G.bearer(), 'Content-Type': 'application/json; charset=UTF-8', 'X-Upload-Content-Type': file.type || 'application/octet-stream', 'X-Upload-Content-Length': String(file.size) },
+      body: JSON.stringify(meta),
+    })
+    if (!start.ok) throw new Error('Upload could not start (' + start.status + ')')
+    const loc = start.headers.get('Location')
+    if (!loc) throw new Error('Upload could not start (no session).')
+    const up = await fetch(loc, { method: 'PUT', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file })
+    if (!up.ok) throw new Error('Upload failed (' + up.status + ')')
+    const f = await up.json() as { id: string; webViewLink?: string; mimeType?: string; size?: string }
+    const me = G.currentEmail() ?? ''
+    for (const m of await memberEmails(projectId)) if (m.email !== me) await shareRead(f.id, m.email)
+    return { id: f.id, kind: 'file', name: file.name, url: f.webViewLink ?? `https://drive.google.com/file/d/${f.id}/view`, fileId: f.id, mime: f.mimeType, size: Number(f.size ?? file.size), added_by: me, added_at: new Date().toISOString() }
+  },
+  async removeAttachmentFile(a: Attachment) {
+    if (a.fileId) await G.api(`${G.DRIVE}/${a.fileId}`, { method: 'PATCH', body: JSON.stringify({ trashed: true }) }).catch(() => {})
+  },
+  async shareAttachments(projectId: string, email: string) {
+    const r = await G.api<{ files: DriveFile[] }>(G.DRIVE + G.q({ q: `appProperties has { key='project' and value='${projectId}' } and trashed=false and 'me' in owners`, fields: 'files(id)', pageSize: 1000 })).catch(() => ({ files: [] as DriveFile[] }))
+    for (const f of r.files) await shareRead(f.id, email)
+  },
+
   async addMember(id: string, email: string, role: Member['role']) {
     const msg = `You were added to an RTM project. Open ${location.origin}${location.pathname} , sign in with Google, then use "Open shared project" and pick this file.`
     await G.api(`${G.DRIVE}/${id}/permissions${G.q({ sendNotificationEmail: true, emailMessage: msg })}`, {
       method: 'POST', body: JSON.stringify({ type: 'user', role: role === 'viewer' ? 'reader' : 'writer', emailAddress: email.trim().toLowerCase() }),
     })
+    await gdrive.shareAttachments(id, email.trim().toLowerCase())
   },
   async removeMember(id: string, m: Member) {
     if (!m.permId) return
@@ -204,6 +267,7 @@ const gdrive = {
   },
 
   async saveReq(id: string, r: Req, prev: Req | undefined, h: HistoryEntry, who: string, now: string) {
+    await ensureHeader(id)
     const rows = await getValues(id, `Requirements!A2:${LAST}`)
     const i = rows.findIndex(x => (x[0] ?? '').trim() === r.id.trim())
     if (!prev && i >= 0) throw new Error(`ID ${r.id} already exists. IDs are never reused.`)
@@ -215,15 +279,17 @@ const gdrive = {
   },
 
   async bulkSave(id: string, incoming: Req[], labels?: (k: string) => string): Promise<number> {
+    await ensureHeader(id)
     const who = G.currentEmail() ?? '', now = new Date().toISOString()
     const rows = await getValues(id, `Requirements!A2:${LAST}`)
     const table = rows.map(x => [...x, ...Array(Math.max(0, REQ_COLS.length - x.length)).fill('')])
     const index = new Map(table.map((x, i) => [(x[0] ?? '').trim(), i]))
     const hist: string[][] = []
-    for (const r of incoming) {
+    for (let r of incoming) {
       if (!r.id) continue
       const i = index.get(r.id.trim())
       const prev = i === undefined ? undefined : rowToReq(table[i])
+      if (prev && !r.attachments?.length) r = { ...r, attachments: prev.attachments }
       const changes = diff(prev, clean(r), labels)
       if (prev && !changes.length) continue
       const row = reqToRow(r, who, now)
@@ -396,3 +462,15 @@ export function subscribe(projectId: string, onChange: () => void): () => void {
   window.addEventListener('storage', h)
   return () => window.removeEventListener('storage', h)
 }
+
+// ---------- attachments ----------
+export async function uploadAttachment(projectId: string, reqId: string, file: File): Promise<Attachment> {
+  if (!GOOGLE) throw new Error('File uploads need Google sign-in. In the demo you can add links.')
+  if (file.size > 50 * 1024 * 1024) throw new Error('Files up to 50 MB. For bigger files, upload to Drive or SharePoint and add a link.')
+  return gdrive.uploadAttachment(projectId, reqId, file)
+}
+export async function removeAttachmentFile(a: Attachment) {
+  if (GOOGLE) await gdrive.removeAttachmentFile(a)
+}
+export const newLink = async (name: string, url: string): Promise<Attachment> =>
+  ({ id: 'l_' + Math.random().toString(36).slice(2, 10), kind: 'link', name: name.trim() || url, url: url.trim(), added_by: await currentUser(), added_at: new Date().toISOString() })

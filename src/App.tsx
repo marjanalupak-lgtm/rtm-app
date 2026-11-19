@@ -5,6 +5,7 @@ import { emptyReq, severity, type Req } from './model'
 import { ConfigContext, defaultConfig, fieldLabel } from './config'
 import { check, nextIdFor } from './rules'
 import { Settings } from './Settings'
+import { TreeView } from './TreeView'
 import * as store from './store'
 import { RtmTable } from './RtmTable'
 import { Dashboard } from './Dashboard'
@@ -14,8 +15,8 @@ import { MultiSelect, Select } from './ui'
 import { ProjectsTab, ProjectEditor } from './Projects'
 import type { Project } from './store'
 
-type Tab = 'projects' | 'dashboard' | 'rtm' | 'settings' | 'guide'
-const TABS: [Tab, string][] = [['projects', 'Projects'], ['dashboard', 'Dashboard'], ['rtm', 'RTM'], ['settings', 'Settings'], ['guide', 'Guide & rules']]
+type Tab = 'projects' | 'dashboard' | 'rtm' | 'tree' | 'settings' | 'guide'
+const TABS: [Tab, string][] = [['projects', 'Projects'], ['dashboard', 'Dashboard'], ['rtm', 'RTM'], ['tree', 'Tree'], ['settings', 'Settings'], ['guide', 'Guide & rules']]
 const ls = { get: (k: string) => { try { return localStorage.getItem(k) ?? '' } catch { return '' } }, set: (k: string, v: string) => { try { localStorage.setItem(k, v) } catch { /* ignore */ } } }
 
 function Login({ reason }: { reason?: string }) {
@@ -127,7 +128,7 @@ function Main({ email }: { email: string }) {
       </header>
 
       <main className="content">
-        {(activeTab === 'rtm' || activeTab === 'dashboard') && (
+        {(activeTab === 'rtm' || activeTab === 'dashboard' || activeTab === 'tree') && (
           <FlexRow columnGap="12" cx="toolbar" rawProps={{ role: 'toolbar' }}>
             <div className="search"><SearchInput value={q} onValueChange={v => setQ(v ?? '')} placeholder="Search all fields" debounceDelay={150} /></div>
             {activeTab === 'rtm' && <>
@@ -147,13 +148,14 @@ function Main({ email }: { email: string }) {
           onOpenShared={() => store.openSharedProject().then(async id => { if (id) { await loadProjects(); setPid(id); setTab('rtm'); notify('Shared project opened') } }).catch(e => notify(e.message, false))} />}
         {activeTab === 'dashboard' && <Dashboard rows={filtered} onOpen={open} />}
         {activeTab === 'rtm' && <RtmTable rows={filtered} onOpen={open} />}
+        {activeTab === 'tree' && <TreeView rows={rows} onOpen={open} q={q} />}
         {activeTab === 'settings' && project && <Settings projectId={pid} config={cfg} isOwner={!!project.isOwner} onSaved={loadProjects} notify={notify} />}
         {activeTab === 'guide' && <Guide />}
       </main>
 
       {editing && (
         <Editor
-          projectId={pid} readOnly={project?.canEdit === false} initial={editing.r} isNew={editing.isNew} existingIds={new Set(rows.map(r => r.id))}
+          projectId={pid} readOnly={project?.canEdit === false} allRows={rows} onOpenOther={x => setEditing({ r: x, isNew: false })} initial={editing.r} isNew={editing.isNew} existingIds={new Set(rows.map(r => r.id))}
           onClose={() => setEditing(null)}
           onSave={async r => {
             const prev = editing.isNew ? undefined : rows.find(x => x.id === editing.r.id)

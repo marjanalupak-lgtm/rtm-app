@@ -26,6 +26,10 @@ const listeners = new Set<(email: string | null) => void>()
 export const onAuthChange = (fn: (email: string | null) => void) => { listeners.add(fn); return () => { listeners.delete(fn) } }
 const emit = () => listeners.forEach(f => f(token?.email ?? null))
 export const currentEmail = () => token?.email ?? null
+export function bearer(): string {
+  if (!token || token.exp < Date.now()) { expire(); throw new AuthError() }
+  return token.value
+}
 
 const scripts: Record<string, Promise<void>> = {}
 function loadScript(src: string): Promise<void> {
