@@ -28,8 +28,7 @@ Without Supabase keys it runs in **local demo mode** (data stays in your browser
 
 ## Deploy to GitHub Pages
 1. Create an empty repo on GitHub and push this folder to `main`.
-2. Repo → Settings → Secrets and variables → Actions → add
-   `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
+2. Supabase URL + publishable key live in `.env.production` (safe to be public).
 3. Repo → Settings → Pages → Source: **GitHub Actions**.
 4. Every push to `main` runs tests, builds and publishes.
 

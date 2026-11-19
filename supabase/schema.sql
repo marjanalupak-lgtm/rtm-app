@@ -31,5 +31,9 @@ create policy "team delete" on public.requirements for delete to authenticated u
 create policy "history read" on public.requirement_history for select to authenticated using (true);
 create policy "history append" on public.requirement_history for insert to authenticated with check (true);
 
+-- Data API access (project has "auto-grant to new tables" off).
+grant select, insert, update, delete on public.requirements to authenticated;
+grant select, insert on public.requirement_history to authenticated;
+
 -- Live updates for everyone looking at the RTM.
 alter publication supabase_realtime add table public.requirements;
