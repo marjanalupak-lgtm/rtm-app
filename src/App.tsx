@@ -6,6 +6,7 @@ import { ConfigContext, defaultConfig, fieldLabel } from './config'
 import { nextIdFor } from './rules'
 import { Settings } from './Settings'
 import { TreeTable, type FoldCmd } from './TreeTable'
+import { ViewMenu } from './ViewMenu'
 import * as store from './store'
 import { RtmTable, useTableState, columns as tableColumns } from './RtmTable'
 import { ColumnsConfigurationModal } from '@epam/uui'
@@ -214,6 +215,8 @@ function Main({ email, onSignOut }: { email: string; onSignOut: () => void }) {
             <div className="search"><SearchInput value={q} onValueChange={v => setQ(v ?? '')} placeholder="Search all fields" debounceDelay={150} /></div>
             {activeTab === 'rtm' && <MultiSwitch<View> size="36" value={view} onValueChange={setView} items={[{ id: 'list', caption: 'List' }, { id: 'tree', caption: 'Tree' }]} rawProps={{ 'aria-label': 'RTM view' }} />}
             {activeTab === 'rtm' && view === 'list' && <Button fill="outline" color="secondary" caption={hiddenCols ? `Columns · ${hiddenCols} hidden` : 'Columns'} onClick={openColumns} />}
+            {activeTab === 'rtm' && view === 'list' && project && <ViewMenu pid={pid} allKeys={allCols.map(c => c.key)} current={colConfig} defaults={colDefaults}
+              apply={c => setTableState(s => ({ ...s, columnsConfig: c }))} notify={notify} />}
             {activeTab === 'rtm' && view === 'tree' && <>
               <Button fill="outline" color="secondary" caption="Expand all" onClick={() => setFold(f => ({ mode: 'expand', n: (f?.n ?? 0) + 1 }))} />
               <Button fill="outline" color="secondary" caption="Collapse all" onClick={() => setFold(f => ({ mode: 'collapse', n: (f?.n ?? 0) + 1 }))} />
