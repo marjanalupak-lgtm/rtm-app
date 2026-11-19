@@ -35,11 +35,13 @@ export function buildId(s: IdScheme, type: string, area: string | undefined, num
 
 export type PlanItem = { from: string; to: string; renumbered: boolean }
 export type Plan = { items: PlanItem[]; skipped: { id: string; why: string }[] }
+export const needsAreaCount = (plan: Plan) => plan.skipped.filter(s => s.why === 'needs an area').length
 
 // Which IDs must change so every requirement follows `next` (read with `prev`).
 // Areas are matched by position, so renaming an area code in Settings carries over.
 // If the new ID is taken, the requirement gets the next free number for its type + area.
-export function planRename(rows: Req[], prev: IdScheme, next: IdScheme): Plan {
+// `fallbackArea` is used for IDs that have no area but whose type now needs one (e.g. BR-01 → ST-BR-01).
+export function planRename(rows: Req[], prev: IdScheme, next: IdScheme, fallbackArea?: string): Plan {
   const areaMap = new Map<string, string>()
   prev.areas.forEach((a, i) => { const n = next.areas[i]?.code; if (a.code && n) areaMap.set(a.code, n) })
   for (const a of next.areas) if (!areaMap.has(a.code) && !prev.areas.some(p => p.code === a.code)) areaMap.set(a.code, a.code)
@@ -48,7 +50,7 @@ export function planRename(rows: Req[], prev: IdScheme, next: IdScheme): Plan {
   for (const r of rows) {
     const p = parseId(r.id, prev.sep)
     if (!p || !r.type || !next.types[r.type]?.code) continue
-    const area = p.area ? (areaMap.get(p.area) ?? p.area) : undefined
+    const area = p.area ? (areaMap.get(p.area) ?? p.area) : next.types[r.type]?.area ? fallbackArea || undefined : undefined
     const to = buildId(next, r.type, area, Number(p.num))
     if (!to) { skipped.push({ id: r.id, why: next.types[r.type]?.area && !area ? 'needs an area' : 'no type code' }); continue }
     if (to !== r.id) proposed.set(r.id, { to, area })

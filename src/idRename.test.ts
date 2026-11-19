@@ -41,4 +41,10 @@ describe('ID rename', () => {
   it('nothing to do when IDs already follow the structure', () => {
     expect(planRename(rows, s, s).items).toEqual([])
   })
+  it('IDs without an area get the chosen area when their type needs one', () => {
+    const next = structuredClone(s)
+    next.types['Business'].area = true
+    expect(planRename(rows, s, next).skipped).toEqual([{ id: 'BR-01', why: 'needs an area' }])
+    expect(planRename(rows, s, next, 'ST').items).toEqual([{ from: 'BR-01', to: 'ST-BR-01', renumbered: false }])
+  })
 })

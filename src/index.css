@@ -268,3 +268,4 @@ body.resizing { cursor: col-resize; user-select: none; }
 .rn-skipped { font-size: 13px; color: var(--uui-text-secondary); }
 .rn-skipped summary { cursor: pointer; }
 .rn-skipped > div { max-height: 120px; overflow-y: auto; margin-top: 6px; }
+.rn-area { display: grid; gap: 6px; padding: 10px 12px; border-radius: 6px; background: #FFF6E5; border: 1px solid #F5C77A; }

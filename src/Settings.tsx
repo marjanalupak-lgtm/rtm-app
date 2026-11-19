@@ -7,8 +7,8 @@ import * as store from './store'
 import { Select } from './ui'
 import type { Req } from './model'
 import { defaultScheme, detectScheme, example, type IdScheme } from './idScheme'
-import { planRename, toMap, type Plan } from './idRename'
-import { RenameModal } from './RenameModal'
+import { needsAreaCount, planRename, toMap, type Plan } from './idRename'
+import { RenameModal, type RenameChoice } from './RenameModal'
 import { useUuiContext } from '@epam/uui-core'
 
 type Section = 'general' | 'lists' | 'fields' | 'custom' | 'rules' | 'workflow'
@@ -28,25 +28,26 @@ export function Settings(p: { projectId: string; rows: Req[]; onRowsChanged: () 
 
   const up = (fn: (c: Config) => void) => setCfg(c => { const n = structuredClone(c); fn(n); return n })
   const { uuiModals } = useUuiContext()
-  const askRename = (plan: Plan, title: string, skipLabel?: string) =>
-    uuiModals.show<'rename' | 'skip'>(props => <RenameModal {...props} plan={plan} title={title} skipLabel={skipLabel} />).catch(() => null)
+  const askRename = (make: (fallback?: string) => Plan, areas: IdScheme['areas'], title: string, skipLabel?: string) =>
+    uuiModals.show<RenameChoice>(props => <RenameModal {...props} make={make} areas={areas} title={title} skipLabel={skipLabel} />).catch(() => null)
   const rename = async (plan: Plan) => {
     const n = await store.renameIds(p.projectId, toMap(plan.items))
     await p.onRowsChanged()
     p.notify(`${n} requirement${n === 1 ? '' : 's'} updated`)
   }
+  const worthAsking = (plan: Plan) => plan.items.length > 0 || needsAreaCount(plan) > 0
   const save = async () => {
     const n = normalize(cfg)
     const prevS = p.config.id.scheme, nextS = n.id.scheme
     // Structure changed → offer to rename existing IDs to match.
-    const plan = prevS?.on && nextS?.on && JSON.stringify(prevS) !== JSON.stringify(nextS) ? planRename(p.rows, prevS, nextS) : null
-    let choice: 'rename' | 'skip' | null = 'skip'
-    if (plan?.items.length) choice = await askRename(plan, 'Rename existing IDs to the new structure?', 'Save settings only')
+    const make = prevS?.on && nextS?.on && JSON.stringify(prevS) !== JSON.stringify(nextS) ? (f?: string) => planRename(p.rows, prevS, nextS, f) : null
+    let choice: RenameChoice | null = { kind: 'skip' }
+    if (make && nextS && worthAsking(make())) choice = await askRename(make, nextS.areas, 'Rename existing IDs to the new structure?', 'Save settings only')
     if (!choice) return
     setBusy(true)
     try {
       await store.saveConfig(p.projectId, n); setCfg(n); p.onSaved(); p.notify('Settings saved')
-      if (choice === 'rename' && plan) await rename(plan)
+      if (choice.kind === 'rename' && choice.plan.items.length) await rename(choice.plan)
     }
     catch (e) { p.notify('Save failed: ' + (e as Error).message, false) } finally { setBusy(false) }
   }
@@ -54,11 +55,12 @@ export function Settings(p: { projectId: string; rows: Req[]; onRowsChanged: () 
   const checkIds = async () => {
     const sc = p.config.id.scheme
     if (!sc?.on) return
-    const plan = planRename(p.rows, sc, sc)
-    if (!plan.items.length) return p.notify('All IDs follow the structure' + (plan.skipped.length ? ` (${plan.skipped.length} skipped)` : ''))
-    if (await askRename(plan, 'Update IDs that don\'t follow the structure?') !== 'rename') return
+    const make = (f?: string) => planRename(p.rows, sc, sc, f)
+    if (!worthAsking(make())) return p.notify('All IDs follow the structure')
+    const choice = await askRename(make, sc.areas, 'Update IDs that don\'t follow the structure?')
+    if (choice?.kind !== 'rename' || !choice.plan.items.length) return
     setBusy(true)
-    try { await rename(plan) } catch (e) { p.notify('Rename failed: ' + (e as Error).message, false) } finally { setBusy(false) }
+    try { await rename(choice.plan) } catch (e) { p.notify('Rename failed: ' + (e as Error).message, false) } finally { setBusy(false) }
   }
 
   return (
