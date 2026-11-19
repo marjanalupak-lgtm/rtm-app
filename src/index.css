@@ -1,0 +1,71 @@
+/* Layout on top of EPAM UUI (Loveship theme). Colors/fonts come from UUI tokens. */
+html, body, #root { height: 100%; margin: 0; }
+body { background: var(--uui-app-bg); color: var(--uui-text-primary); font-family: var(--uui-font, 'Source Sans Pro', sans-serif); }
+* { box-sizing: border-box; }
+a { color: var(--uui-text-link, var(--uui-primary-60)); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.app { display: flex; flex-direction: column; min-height: 100%; }
+.topbar { display: flex; align-items: center; gap: 6px; height: 60px; padding: 0 18px; background: var(--uui-main_menu-bg, #303240); color: #fff; position: sticky; top: 0; z-index: 5; }
+.brand { font-weight: 700; font-size: 20px; letter-spacing: .5px; margin-right: 18px; }
+.toptab { color: #fff !important; }
+.who { color: #fff !important; opacity: .8; }
+.content { padding: 18px 24px 36px; flex: 1; min-width: 0; }
+
+.toolbar { flex-wrap: wrap; row-gap: 12px; margin-bottom: 18px; }
+.search { width: 260px; }
+.filter { width: 170px; }
+
+.table-panel { overflow: hidden; border-radius: 6px; }
+.table-panel .uui-table-row { cursor: pointer; }
+.cell-text { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.empty { padding: 36px; text-align: center; border-radius: 6px; }
+
+/* Dashboard */
+.dash { display: flex; flex-direction: column; gap: 18px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.tile { padding: 18px; border-radius: 6px; border-top: 3px solid var(--uui-neutral-40, #ACAFC8); }
+.tile.ok { border-top-color: var(--uui-success-50, #3DB053); }
+.tile.warn { border-top-color: var(--uui-warning-50, #FCAA00); }
+.tile.bad { border-top-color: var(--uui-critical-50, #E54322); }
+.tile-value { font-size: 32px; font-weight: 600; margin-top: 6px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
+.card { padding: 18px 24px; border-radius: 6px; display: flex; flex-direction: column; gap: 6px; }
+.bar-row { display: grid; grid-template-columns: 140px 1fr 36px; align-items: center; gap: 12px; font-size: 14px; }
+.bar-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--uui-text-secondary); }
+.bar-track { height: 12px; background: var(--uui-neutral-10, #F5F6FA); border-radius: 3px; overflow: hidden; }
+.bar-fill { display: block; height: 100%; background: var(--uui-primary-50, #0E77D3); border-radius: 3px; }
+.bar-num { text-align: right; font-variant-numeric: tabular-nums; }
+.attn { cursor: pointer; padding: 6px 0; border-bottom: 1px solid var(--uui-divider); }
+.attn:hover { background: var(--uui-neutral-5, #FAFAFC); }
+.attn-id { width: 80px; flex-shrink: 0; }
+.attn-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Editor drawer */
+.drawer-wrap { position: fixed; inset: 0; background: rgba(29,30,38,.4); z-index: 10; display: flex; justify-content: flex-end; }
+.drawer { width: min(820px, 100vw); height: 100%; display: flex; flex-direction: column; }
+.drawer-body { flex: 1; overflow-y: auto; padding: 18px 24px; }
+.drawer-foot { border-top: 1px solid var(--uui-divider); }
+.form-group { margin-bottom: 24px; }
+.group-title { margin-bottom: 6px; letter-spacing: .5px; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 18px; }
+.span2 { grid-column: 1 / -1; }
+.mb { margin-bottom: 12px; }
+.hist-item { padding: 12px 0; border-bottom: 1px solid var(--uui-divider); }
+
+/* Guide */
+.gtable { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 6px; }
+.gtable th, .gtable td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--uui-divider); vertical-align: top; }
+.gtable th { font-size: 12px; text-transform: uppercase; color: var(--uui-text-secondary); }
+.rules { margin: 6px 0 0; padding-left: 18px; line-height: 1.6; font-size: 14px; }
+
+/* Login */
+.login { min-height: 100%; display: grid; place-items: center; padding: 16px; }
+.login-card { width: min(420px, 100%); padding: 30px; border-radius: 6px; display: flex; flex-direction: column; gap: 12px; }
+
+@media (max-width: 700px) {
+  .content { padding: 12px 16px; }
+  .search, .filter { width: 100%; }
+  .form-grid { grid-template-columns: 1fr; }
+  .topbar { overflow-x: auto; }
+}
