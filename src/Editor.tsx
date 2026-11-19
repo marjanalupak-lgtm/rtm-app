@@ -1,6 +1,6 @@
 // Side panel to create / edit one requirement, with status rules and history.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Button, FlexRow, FlexSpacer, LabeledInput, TextInput, TextArea, DatePicker, Text, TabButton, WarningAlert, Panel } from '@epam/uui'
+import { Button, FlexRow, FlexSpacer, IconButton, LabeledInput, TextInput, TextArea, DatePicker, Text, TabButton, WarningAlert, Panel } from '@epam/uui'
 import { FIELDS, GATES, type Req, type Field, type Attachment } from './model'
 import { useConfig, getVal, type CustomField } from './config'
 import { check, allowedNext, gateFor } from './rules'
@@ -13,6 +13,7 @@ const GROUPS: Field['group'][] = ['Core', 'Traceability', 'Design', 'Governance'
 export function Editor(p: {
   projectId: string; readOnly?: boolean; initial: Req; isNew: boolean; existingIds: Set<string>; allRows: Req[]
   onSave: (r: Req) => Promise<void>; onDelete: () => Promise<void>; onClose: () => void; onOpenOther: (r: Req) => void
+  variant?: 'drawer' | 'pane'; onDirty?: (dirty: boolean) => void
 }) {
   const [r, setR] = useState<Req>(p.initial)
   const [tab, setTab] = useState<'form' | 'history'>('form')
@@ -65,6 +66,9 @@ export function Editor(p: {
     if (fresh.current.some(x => x.id === a.id)) { removeAttachmentFile(a); fresh.current = fresh.current.filter(x => x.id !== a.id) }
   }
   const dirty = JSON.stringify(r) !== JSON.stringify(p.initial)
+  useEffect(() => { p.onDirty?.(dirty) }, [dirty]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Switching to another requirement (side pane) discards files uploaded here but not saved.
+  useEffect(() => () => { fresh.current.forEach(a => removeAttachmentFile(a)); fresh.current = [] }, [p.initial.id])
   const close = () => {
     if (dirty && !p.readOnly && !confirm('Discard unsaved changes?')) return
     fresh.current.forEach(a => removeAttachmentFile(a)); fresh.current = []
@@ -101,14 +105,14 @@ export function Editor(p: {
     return <TextInput value={v} onValueChange={x => set(f.key, x ?? '')} isDisabled={disabled} placeholder={f.link ? 'ID or URL' : undefined} isInvalid={f.key === 'id' && idTaken} />
   }
 
-  return (
-    <div className="drawer-wrap" onMouseDown={e => { if (e.target === e.currentTarget) close() }}>
-      <Panel background="surface-main" shadow cx="drawer">
+  const pane = p.variant === 'pane'
+  const body = (
+      <Panel background="surface-main" shadow cx={pane ? 'pane' : 'drawer'}>
         <FlexRow padding="24" vPadding="18" borderBottom columnGap="12">
           <Text fontSize="18" fontWeight="600">{p.isNew ? 'New requirement' : r.id}</Text>
           <CheckBadge check={gap} />
           <FlexSpacer />
-          <Button fill="none" color="secondary" caption="Close" onClick={close} />
+          <IconButton icon={() => <span className="pane-x" aria-hidden>×</span>} onClick={close} rawProps={{ 'aria-label': 'Close details', title: 'Close' }} />
         </FlexRow>
         {!p.isNew && (
           <FlexRow padding="24" borderBottom>
@@ -205,6 +209,11 @@ export function Editor(p: {
           {!p.readOnly && <Button color="primary" caption={busy ? 'Saving…' : 'Save'} isDisabled={busy} onClick={save} />}
         </FlexRow>
       </Panel>
+  )
+  if (pane) return body
+  return (
+    <div className="drawer-wrap" onMouseDown={e => { if (e.target === e.currentTarget) close() }}>
+      {body}
     </div>
   )
 }

@@ -207,3 +207,27 @@ a:hover { text-decoration: underline; }
 .hfilter-item .uui-checkbox-container { min-width: 0; }
 .hfilter-count { font-size: 12px; color: var(--uui-text-secondary); font-variant-numeric: tabular-nums; }
 .hfilter-foot { display: flex; align-items: center; gap: 12px; border-top: 1px solid var(--uui-divider); padding-top: 8px; }
+
+/* RTM split: table/tree on the left, details pane on the right (draggable divider) */
+.split { display: flex; align-items: stretch; height: calc(100vh - 176px); min-height: 460px; }
+.split-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.split-main > .table-panel, .split-main > .empty { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+.split-main > .table-panel > * { flex: 1; min-height: 0; }
+.splitter { flex: none; width: 12px; cursor: col-resize; position: relative; }
+.splitter::after { content: ''; position: absolute; top: 0; bottom: 0; left: 5px; width: 2px; border-radius: 2px; background: var(--uui-divider, #E1E3EB); transition: background .15s; }
+.splitter:hover::after, .splitter:focus-visible::after, body.resizing .splitter::after { background: var(--uui-primary-50, #773CEC); width: 3px; }
+.splitter:focus-visible { outline: none; }
+body.resizing { cursor: col-resize; user-select: none; }
+.split-side { flex: none; min-width: 320px; display: flex; }
+.pane { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; border-radius: 6px; overflow: hidden; }
+.pane .form-grid { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.pane-x { font-size: 22px; line-height: 1; padding: 0 6px; color: var(--uui-text-secondary); }
+.tt-id { display: inline-flex; align-items: center; gap: 10px; white-space: nowrap; }
+.tt-id b { font-size: 14px; }
+@media (max-width: 900px) {
+  .split { flex-direction: column; height: auto; }
+  .split-main > .table-panel { min-height: 420px; }
+  .splitter { display: none; }
+  .split-side { width: 100% !important; min-width: 0; margin-top: 12px; }
+}
+.tt-id .lvl { min-width: 0; padding: 2px 6px; font-size: 11px; }

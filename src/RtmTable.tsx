@@ -92,12 +92,12 @@ export function useTableState(projectId: string): [DataTableState, SetTable] {
   return [state, set]
 }
 
-export function RtmTable({ rows, onOpen, state, setState, fctx }: { rows: Req[]; onOpen: (r: Req) => void; state: DataTableState; setState: SetTable; fctx?: FilterCtx }) {
+export function RtmTable({ rows, onOpen, state, setState, fctx, selectedId }: { rows: Req[]; onOpen: (r: Req) => void; state: DataTableState; setState: SetTable; fctx?: FilterCtx; selectedId?: string }) {
   const cfg = useConfig()
   const items = useMemo<Row[]>(() => rows.map(r => ({ ...r, ...Object.fromEntries(cfg.custom.map(c => [c.key, getVal(r, c.key)])), check: check(r, cfg) })), [rows, cfg])
   const cols = useMemo(() => columns(cfg, fctx), [cfg, fctx])
   const ds = useArrayDataSource<Row, string, unknown>({ items, getId: r => r.id }, [items])
-  const view = ds.useView(state, setState as never, { getRowOptions: r => ({ onClick: () => onOpen(r) }) })
+  const view = ds.useView(state, setState as never, { getRowOptions: r => ({ onClick: () => onOpen(r), isSelectable: true }) })
   if (!rows.length) {
     return <Panel background="surface-main" shadow cx="empty"><Text color="secondary">No requirements match. Add one or import your RTM.xlsm.</Text></Panel>
   }
@@ -105,7 +105,7 @@ export function RtmTable({ rows, onOpen, state, setState, fctx }: { rows: Req[];
     <Panel background="surface-main" shadow cx="table-panel">
       <DataTable<Row, string>
         {...view.getListProps()} getRows={view.getVisibleRows}
-        value={state} onValueChange={setState} columns={cols}
+        value={{ ...state, selectedId }} onValueChange={s => setState(({ ...s, selectedId: undefined }))} columns={cols}
         headerTextCase="upper" border allowColumnsResizing size="48" headerSize="48" showColumnsConfig
       />
     </Panel>

@@ -5,7 +5,7 @@ import { emptyReq, type Req } from './model'
 import { ConfigContext, defaultConfig, fieldLabel } from './config'
 import { nextIdFor } from './rules'
 import { Settings } from './Settings'
-import { TreeView } from './TreeView'
+import { TreeTable } from './TreeTable'
 import * as store from './store'
 import { RtmTable, useTableState, columns as tableColumns } from './RtmTable'
 import { ColumnsConfigurationModal } from '@epam/uui'
@@ -132,7 +132,43 @@ function Main({ email }: { email: string }) {
     } catch (e) { notify('Import failed: ' + (e as Error).message, false) }
   }
 
-  const open = (r: Req) => setEditing({ r, isNew: false })
+  // Details open in a side pane on the RTM tab (resizable split) and as a drawer elsewhere.
+  const dirtyRef = useRef(false)
+  const guard = () => !dirtyRef.current || confirm('Discard unsaved changes?')
+  const open = (r: Req) => { if (editing?.r.id === r.id && !editing.isNew) return; if (guard()) { dirtyRef.current = false; setEditing({ r, isNew: false }) } }
+  const startNew = () => { if (guard()) { dirtyRef.current = false; setEditing({ r: { ...emptyReq(nextIdFor(rows, cfg)), status: cfg.workflow.initial }, isNew: true }) } }
+  const [paneW, setPaneW] = useState(() => Math.min(70, Math.max(25, Number(ls.get('rtm.paneW')) || 42)))
+  const splitRef = useRef<HTMLDivElement>(null)
+  const startDrag = (e: React.MouseEvent) => {
+    e.preventDefault()
+    const box = splitRef.current?.getBoundingClientRect(); if (!box) return
+    let w = paneW
+    const move = (ev: MouseEvent) => { w = Math.min(70, Math.max(25, ((box.right - ev.clientX) / box.width) * 100)); setPaneW(w) }
+    const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); document.body.classList.remove('resizing'); ls.set('rtm.paneW', String(Math.round(w))) }
+    document.body.classList.add('resizing')
+    window.addEventListener('mousemove', move); window.addEventListener('mouseup', up)
+  }
+  const nudge = (d: number) => setPaneW(w => { const n = Math.min(70, Math.max(25, w + d)); ls.set('rtm.paneW', String(n)); return n })
+  const paneMode = activeTab === 'rtm'
+  function renderEditor(variant: 'pane' | 'drawer') {
+    if (!editing) return null
+    return (
+      <Editor key={(editing.isNew ? 'new:' : '') + editing.r.id} variant={variant} onDirty={d => { dirtyRef.current = d }}
+        projectId={pid} readOnly={project?.canEdit === false} allRows={rows} onOpenOther={x => { dirtyRef.current = false; setEditing({ r: x, isNew: false }) }}
+        initial={editing.r} isNew={editing.isNew} existingIds={new Set(rows.map(r => r.id))}
+        onClose={() => { dirtyRef.current = false; setEditing(null) }}
+        onSave={async r => {
+          const prev = editing.isNew ? undefined : rows.find(x => x.id === editing.r.id)
+          await store.saveReq(pid, r, prev)
+          await reload(); dirtyRef.current = false
+          // In the side pane the saved requirement stays open; the drawer closes.
+          setEditing(variant === 'pane' ? { r, isNew: false } : null)
+          notify(`${r.id} saved`)
+        }}
+        onDelete={async () => { await store.deleteReq(pid, editing.r); await reload(); dirtyRef.current = false; setEditing(null); notify(`${editing.r.id} deleted`) }}
+      />
+    )
+  }
 
   return (
     <ConfigContext.Provider value={cfg}>
@@ -155,37 +191,40 @@ function Main({ email }: { email: string }) {
           <FlexRow columnGap="12" cx="toolbar" rawProps={{ role: 'toolbar' }}>
             <div className="search"><SearchInput value={q} onValueChange={v => setQ(v ?? '')} placeholder="Search all fields" debounceDelay={150} /></div>
             {activeTab === 'rtm' && <MultiSwitch<View> size="36" value={view} onValueChange={setView} items={[{ id: 'list', caption: 'List' }, { id: 'tree', caption: 'Tree' }]} rawProps={{ 'aria-label': 'RTM view' }} />}
+            {activeTab === 'rtm' && view === 'list' && <Button fill="outline" color="secondary" caption={hiddenCols ? `Columns · ${hiddenCols} hidden` : 'Columns'} onClick={openColumns} />}
             <FlexSpacer />
             <Text color="secondary" fontSize="14">{filtered.length} of {rows.length}</Text>
             {project?.canEdit !== false && <Button fill="outline" color="secondary" caption="Import Excel" onClick={() => fileRef.current?.click()} />}
-            {activeTab === 'rtm' && view === 'list' && <Button fill="outline" color="secondary" caption={hiddenCols ? `Columns · ${hiddenCols} hidden` : 'Columns'} onClick={openColumns} />}
             <Button fill="outline" color="secondary" caption="Export Excel" onClick={() => import('./excel').then(m => m.exportExcel(filtered, project?.name ?? 'RTM', cfg))} />
-            {project?.canEdit !== false && <Button color="primary" caption="+ Requirement" onClick={() => setEditing({ r: { ...emptyReq(nextIdFor(rows, cfg)), status: cfg.workflow.initial }, isNew: true })} />}
+            {project?.canEdit !== false && <Button color="primary" caption="+ Requirement" onClick={startNew} />}
             <input ref={fileRef} type="file" accept=".xlsx,.xlsm" hidden onChange={e => { const f = e.target.files?.[0]; if (f) onImport(f); e.target.value = '' }} />
           </FlexRow>
         )}
-        {(activeTab === 'dashboard' || (activeTab === 'rtm' && view === 'list')) && <ActiveFilters cfg={cfg} st={filters} onChange={setFilters} />}
+        {(activeTab === 'rtm' || activeTab === 'dashboard') && <ActiveFilters cfg={cfg} st={filters} onChange={setFilters} />}
         {activeTab === 'projects' && projects && <ProjectsTab projects={projects} currentId={pid} onOpen={id => { setPid(id); setTab('rtm') }} onEdit={setEditProject} onChanged={loadProjects} notify={notify}
           onOpenShared={() => store.openSharedProject().then(async id => { if (id) { await loadProjects(); setPid(id); setTab('rtm'); notify('Shared project opened') } }).catch(e => notify(e.message, false))} />}
         {activeTab === 'dashboard' && <Dashboard rows={filtered} onOpen={open} />}
-        {activeTab === 'rtm' && view === 'list' && <RtmTable rows={filtered} onOpen={open} state={tableState} setState={setTableState} fctx={fctx} />}
-        {activeTab === 'rtm' && view === 'tree' && <TreeView rows={rows} onOpen={open} q={q} filtersActive={Object.values(filters.values).some(v => v.length)} />}
+        {activeTab === 'rtm' && (
+          <div className={'split' + (editing ? ' with-pane' : '')} ref={splitRef}>
+            <div className="split-main">
+              {view === 'list'
+                ? <RtmTable rows={filtered} onOpen={open} state={tableState} setState={setTableState} fctx={fctx} selectedId={editing?.isNew ? undefined : editing?.r.id} />
+                : <TreeTable rows={rows} q={q} filters={filters} onOpen={open} selectedId={editing?.isNew ? undefined : editing?.r.id} />}
+            </div>
+            {editing && (
+              <>
+                <div className="splitter" role="separator" aria-orientation="vertical" aria-label="Resize details panel" tabIndex={0}
+                  onMouseDown={startDrag} onKeyDown={e => { if (e.key === 'ArrowLeft') nudge(2); if (e.key === 'ArrowRight') nudge(-2) }} />
+                <div className="split-side" style={{ width: paneW + '%' }}>{renderEditor('pane')}</div>
+              </>
+            )}
+          </div>
+        )}
         {activeTab === 'settings' && project && <Settings projectId={pid} config={cfg} isOwner={!!project.isOwner} onSaved={loadProjects} notify={notify} />}
         {activeTab === 'guide' && <Guide />}
       </main>
 
-      {editing && (
-        <Editor
-          projectId={pid} readOnly={project?.canEdit === false} allRows={rows} onOpenOther={x => setEditing({ r: x, isNew: false })} initial={editing.r} isNew={editing.isNew} existingIds={new Set(rows.map(r => r.id))}
-          onClose={() => setEditing(null)}
-          onSave={async r => {
-            const prev = editing.isNew ? undefined : rows.find(x => x.id === editing.r.id)
-            await store.saveReq(pid, r, prev)
-            await reload(); setEditing(null); notify(`${r.id} saved`)
-          }}
-          onDelete={async () => { await store.deleteReq(pid, editing.r); await reload(); setEditing(null); notify(`${editing.r.id} deleted`) }}
-        />
-      )}
+      {editing && !paneMode && renderEditor('drawer')}
       {editProject && (
         <ProjectEditor initial={editProject} me={email} onClose={() => setEditProject(null)}
           onSaved={async pr => { setEditProject(null); await loadProjects(); if (!editProject.id) { setPid(pr.id); setTab('rtm') } notify(`Project "${pr.name}" saved`) }}
