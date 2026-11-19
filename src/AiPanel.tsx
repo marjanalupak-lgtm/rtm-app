@@ -162,11 +162,11 @@ export function AiPanel(p: { pid: string; rows: Req[]; cfg: Config; me: string; 
                       <ul className="ai-changes">{allowedChanges(c).map(k => {
                         const cur = String((ex as unknown as Record<string, string>)[k] ?? '')
                         const adds = (APPENDED as readonly string[]).includes(k)
-                        return <li key={k}><b>{k}</b>{adds ? ' — adds: ' : ' → '}{c.changes[k]}{!adds && <span className="ai-was"> (now: {cur || '—'})</span>}</li>
+                        return <li key={k}><b>{k}</b>{adds ? ' — adds: ' : ' → '}{c.changes[k]}{!adds && k !== 'statement' && <span className="ai-was"> (now: {cur || '—'})</span>}</li>
                       })}</ul>
                     )}
                     {warn.map(w => <Text key={w} fontSize="12" cx="ai-warn">⚠ {w}</Text>)}
-                    {c.kind !== 'new' && c.statement && <Text fontSize="14">{c.statement}</Text>}
+                    {c.kind !== 'new' && c.statement && !c.changes.statement && <Text fontSize="14">{c.statement}</Text>}
                     <Text fontSize="12" color="secondary">{c.reason}{c.source ? ` — source: ${c.source}` : ''}</Text>
                   </div>
                 )
