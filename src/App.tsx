@@ -8,10 +8,13 @@ import { RtmTable } from './RtmTable'
 import { Dashboard } from './Dashboard'
 import { Guide } from './Guide'
 import { Editor } from './Editor'
-import { MultiSelect } from './ui'
+import { MultiSelect, Select } from './ui'
+import { ProjectsTab, ProjectEditor } from './Projects'
+import type { Project } from './store'
 
-type Tab = 'dashboard' | 'rtm' | 'guide'
-const TABS: [Tab, string][] = [['dashboard', 'Dashboard'], ['rtm', 'RTM'], ['guide', 'Guide & rules']]
+type Tab = 'projects' | 'dashboard' | 'rtm' | 'guide'
+const TABS: [Tab, string][] = [['projects', 'Projects'], ['dashboard', 'Dashboard'], ['rtm', 'RTM'], ['guide', 'Guide & rules']]
+const ls = { get: (k: string) => { try { return localStorage.getItem(k) ?? '' } catch { return '' } }, set: (k: string, v: string) => { try { localStorage.setItem(k, v) } catch { /* ignore */ } } }
 
 function Login() {
   const [email, setEmail] = useState('')
@@ -49,7 +52,10 @@ export default function App() {
 
 function Main({ email }: { email: string }) {
   const { uuiNotifications } = useUuiContext()
-  const [tab, setTab] = useState<Tab>(() => (localStorage.getItem('rtm.tab') as Tab) || 'rtm')
+  const [tab, setTab] = useState<Tab>(() => (ls.get('rtm.tab') as Tab) || 'rtm')
+  const [projects, setProjects] = useState<Project[] | null>(null)
+  const [pid, setPid] = useState(() => ls.get('rtm.project'))
+  const [editProject, setEditProject] = useState<Project | null>(null)
   const [rows, setRows] = useState<Req[]>([])
   const [editing, setEditing] = useState<{ r: Req; isNew: boolean } | null>(null)
   const [q, setQ] = useState('')
@@ -63,9 +69,21 @@ function Main({ email }: { email: string }) {
     uuiNotifications.show(props => <N {...props}><Text>{msg}</Text></N>, { duration: ok ? 3 : 8 }).catch(() => {})
   }, [uuiNotifications])
 
-  const reload = useCallback(() => store.listReqs().then(setRows).catch(e => notify('Load failed: ' + e.message, false)), [notify])
-  useEffect(() => { reload(); return store.subscribe(reload) }, [reload])
-  useEffect(() => { try { localStorage.setItem('rtm.tab', tab) } catch { /* ignore */ } }, [tab])
+  const loadProjects = useCallback(() => store.listProjects().then(ps => {
+    setProjects(ps)
+    setPid(cur => ps.some(p => p.id === cur) ? cur : (ps.find(p => p.status !== 'Closed') ?? ps[0])?.id ?? '')
+  }).catch(e => notify('Load failed: ' + e.message, false)), [notify])
+  useEffect(() => { loadProjects() }, [loadProjects])
+  const project = projects?.find(p => p.id === pid)
+
+  const reload = useCallback(() => {
+    if (!pid) { setRows([]); return Promise.resolve() }
+    return store.listReqs(pid).then(setRows).catch(e => notify('Load failed: ' + e.message, false))
+  }, [notify, pid])
+  useEffect(() => { reload(); return pid ? store.subscribe(pid, reload) : undefined }, [reload, pid])
+  useEffect(() => { ls.set('rtm.tab', tab) }, [tab])
+  useEffect(() => { ls.set('rtm.project', pid) }, [pid])
+  const activeTab: Tab = projects && !project ? 'projects' : tab
 
   const releases = useMemo(() => [...new Set(rows.map(r => r.release).filter(Boolean))].sort(), [rows])
   const filtered = useMemo(() => {
@@ -86,7 +104,7 @@ function Main({ email }: { email: string }) {
   const onImport = async (file: File) => {
     try {
       const incoming = await (await import('./excel')).importExcel(file)
-      const n = await store.bulkSave(incoming, rows)
+      const n = await store.bulkSave(pid, incoming, rows)
       await reload()
       notify(`Imported ${incoming.length} rows (${n} new or changed).`)
     } catch (e) { notify('Import failed: ' + (e as Error).message, false) }
@@ -98,7 +116,10 @@ function Main({ email }: { email: string }) {
     <div className="app">
       <header className="topbar">
         <div className="brand">RTM</div>
-        {TABS.map(([k, c]) => <TabButton key={k} caption={c} isActive={tab === k} onClick={() => setTab(k)} size="60" cx="toptab" />)}
+        {projects && projects.length > 0 && (
+          <div className="project-pick"><Select value={pid} options={projects.map(p => p.id)} labels={Object.fromEntries(projects.map(p => [p.id, p.name]))} onChange={v => { setPid(v); if (activeTab === 'projects') setTab('rtm') }} placeholder="Select project" noClear /></div>
+        )}
+        {TABS.map(([k, c]) => <TabButton key={k} caption={c} isActive={activeTab === k} isDisabled={k !== 'projects' && k !== 'guide' && !project} onClick={() => setTab(k)} size="60" cx="toptab" />)}
         <FlexSpacer />
         {store.mode === 'local'
           ? <Badge size="24" color="warning" caption="Local demo — data stays in this browser" />
@@ -107,10 +128,10 @@ function Main({ email }: { email: string }) {
       </header>
 
       <main className="content">
-        {tab !== 'guide' && (
+        {(activeTab === 'rtm' || activeTab === 'dashboard') && (
           <FlexRow columnGap="12" cx="toolbar" rawProps={{ role: 'toolbar' }}>
             <div className="search"><SearchInput value={q} onValueChange={v => setQ(v ?? '')} placeholder="Search all fields" debounceDelay={150} /></div>
-            {tab === 'rtm' && <>
+            {activeTab === 'rtm' && <>
               <div className="filter"><MultiSelect value={fStatus} options={LISTS.status} onChange={setFStatus} placeholder="Status" /></div>
               <div className="filter"><MultiSelect value={fRelease} options={releases} onChange={setFRelease} placeholder="Release" /></div>
               <div className="filter"><MultiSelect value={fCheck} options={['Covered', 'Gap', 'Critical gap']} onChange={setFCheck} placeholder="Traceability" /></div>
@@ -118,27 +139,33 @@ function Main({ email }: { email: string }) {
             <FlexSpacer />
             <Text color="secondary" fontSize="14">{filtered.length} of {rows.length}</Text>
             <Button fill="outline" color="secondary" caption="Import Excel" onClick={() => fileRef.current?.click()} />
-            <Button fill="outline" color="secondary" caption="Export Excel" onClick={() => import('./excel').then(m => m.exportExcel(filtered))} />
+            <Button fill="outline" color="secondary" caption="Export Excel" onClick={() => import('./excel').then(m => m.exportExcel(filtered, project?.name ?? 'RTM'))} />
             <Button color="accent" caption="+ Requirement" onClick={() => setEditing({ r: emptyReq(nextId(rows)), isNew: true })} />
             <input ref={fileRef} type="file" accept=".xlsx,.xlsm" hidden onChange={e => { const f = e.target.files?.[0]; if (f) onImport(f); e.target.value = '' }} />
           </FlexRow>
         )}
-        {tab === 'dashboard' && <Dashboard rows={filtered} onOpen={open} />}
-        {tab === 'rtm' && <RtmTable rows={filtered} onOpen={open} />}
-        {tab === 'guide' && <Guide />}
+        {activeTab === 'projects' && projects && <ProjectsTab projects={projects} currentId={pid} onOpen={id => { setPid(id); setTab('rtm') }} onEdit={setEditProject} />}
+        {activeTab === 'dashboard' && <Dashboard rows={filtered} onOpen={open} />}
+        {activeTab === 'rtm' && <RtmTable rows={filtered} onOpen={open} />}
+        {activeTab === 'guide' && <Guide />}
       </main>
 
       {editing && (
         <Editor
-          initial={editing.r} isNew={editing.isNew} existingIds={new Set(rows.map(r => r.id))}
+          projectId={pid} initial={editing.r} isNew={editing.isNew} existingIds={new Set(rows.map(r => r.id))}
           onClose={() => setEditing(null)}
           onSave={async r => {
             const prev = editing.isNew ? undefined : rows.find(x => x.id === editing.r.id)
-            await store.saveReq(r, prev)
+            await store.saveReq(pid, r, prev)
             await reload(); setEditing(null); notify(`${r.id} saved`)
           }}
-          onDelete={async () => { await store.deleteReq(editing.r); await reload(); setEditing(null); notify(`${editing.r.id} deleted`) }}
+          onDelete={async () => { await store.deleteReq(pid, editing.r); await reload(); setEditing(null); notify(`${editing.r.id} deleted`) }}
         />
+      )}
+      {editProject && (
+        <ProjectEditor initial={editProject} me={email} onClose={() => setEditProject(null)}
+          onSaved={async pr => { setEditProject(null); await loadProjects(); if (!editProject.id) { setPid(pr.id); setTab('rtm') } notify(`Project "${pr.name}" saved`) }}
+          onDeleted={async () => { setEditProject(null); await loadProjects(); notify('Project deleted') }} />
       )}
     </div>
   )

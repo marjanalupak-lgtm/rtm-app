@@ -4,6 +4,7 @@ Web app for a team RTM. Built on the RTM.xlsm template: same 28 fields, dropdown
 status rules and the **Traceability Check** formula. UI: EPAM UUI (Loveship).
 
 ## What it does
+- **Projects**: one RTM per project/client. Only project members see it (owners manage settings + members).
 - **RTM table**: search, filters (status, release, traceability), sorting, click a row to edit.
 - **Editor**: all fields grouped (Core, Traceability, Design, Governance, Verification),
   live Traceability Check, ID uniqueness, allowed status transitions + gates.
@@ -21,7 +22,7 @@ Without Supabase keys it runs in **local demo mode** (data stays in your browser
 
 ## Team setup (once)
 1. Create a free project at supabase.com.
-2. SQL Editor → paste `supabase/schema.sql` → Run.
+2. SQL Editor → run `supabase/schema.sql`, then `supabase/002_projects.sql`.
 3. Authentication → URL Configuration → add your GitHub Pages URL to Redirect URLs.
 4. Project Settings → API → copy `Project URL` and `anon public` key.
 5. Local: copy `.env.example` to `.env.local` and fill both values.

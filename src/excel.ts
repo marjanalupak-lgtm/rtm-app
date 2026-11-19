@@ -43,7 +43,7 @@ export async function importExcel(file: File): Promise<Req[]> {
   return out
 }
 
-export async function exportExcel(rows: Req[]) {
+export async function exportExcel(rows: Req[], name = 'RTM') {
   const wb = new ExcelJS.Workbook()
   const ws = wb.addWorksheet('RTM', { views: [{ state: 'frozen', xSplit: 1, ySplit: 1 }] })
   const headers = FIELDS.map(f => f.label + f.req)
@@ -61,6 +61,6 @@ export async function exportExcel(rows: Req[]) {
   const buf = await wb.xlsx.writeBuffer()
   const a = document.createElement('a')
   a.href = window.URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
-  a.download = `RTM-${new Date().toISOString().slice(0, 10)}.xlsx`
+  a.download = `${name.replace(/[^\w\- ]+/g, '').trim() || 'RTM'}-${new Date().toISOString().slice(0, 10)}.xlsx`
   a.click()
 }

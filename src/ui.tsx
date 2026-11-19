@@ -6,15 +6,15 @@ import { severity } from './model'
 
 type Opt = { id: string; name: string }
 
-export function Select(p: { value: string; options: readonly string[]; onChange: (v: string) => void; placeholder?: string; isInvalid?: boolean; isDisabled?: boolean }) {
-  const items = useMemo<Opt[]>(() => p.options.map(o => ({ id: o, name: o })), [p.options])
+export function Select(p: { value: string; options: readonly string[]; labels?: Record<string, string>; onChange: (v: string) => void; placeholder?: string; isInvalid?: boolean; isDisabled?: boolean; noClear?: boolean }) {
+  const items = useMemo<Opt[]>(() => p.options.map(o => ({ id: o, name: p.labels?.[o] ?? o })), [p.options, p.labels])
   const ds = useArrayDataSource<Opt, string, unknown>({ items }, [items])
   return (
     <PickerInput<Opt, string>
       dataSource={ds} selectionMode="single" valueType="id"
       value={p.value} onValueChange={v => p.onChange(v ?? '')}
-      getName={i => i.name} sorting={{ field: 'id' }} searchPosition="none"
-      placeholder={p.placeholder ?? 'Select'} isInvalid={p.isInvalid} isDisabled={p.isDisabled}
+      getName={i => i.name} searchPosition="none"
+      placeholder={p.placeholder ?? 'Select'} isInvalid={p.isInvalid} isDisabled={p.isDisabled} disableClear={p.noClear}
     />
   )
 }

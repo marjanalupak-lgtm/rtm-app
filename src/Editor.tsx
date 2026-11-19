@@ -8,7 +8,7 @@ import { Select, CheckBadge } from './ui'
 const GROUPS: Field['group'][] = ['Core', 'Traceability', 'Design', 'Governance', 'Verification']
 
 export function Editor(p: {
-  initial: Req; isNew: boolean; existingIds: Set<string>
+  projectId: string; initial: Req; isNew: boolean; existingIds: Set<string>
   onSave: (r: Req) => Promise<void>; onDelete: () => Promise<void>; onClose: () => void
 }) {
   const [r, setR] = useState<Req>(p.initial)
@@ -17,7 +17,7 @@ export function Editor(p: {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   useEffect(() => { setR(p.initial); setErr('') }, [p.initial])
-  useEffect(() => { if (tab === 'history' && !p.isNew) loadHistory(p.initial.id).then(setHist).catch(e => setErr(String(e.message ?? e))) }, [tab, p.initial.id, p.isNew])
+  useEffect(() => { if (tab === 'history' && !p.isNew) loadHistory(p.projectId, p.initial.id).then(setHist).catch(e => setErr(String(e.message ?? e))) }, [tab, p.initial.id, p.isNew, p.projectId])
 
   const set = (k: keyof Req, v: string) => setR(x => ({ ...x, [k]: v }))
   const check = traceCheck(r)
