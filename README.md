@@ -21,6 +21,14 @@ Web app for a team RTM. Built on designed template.
 - **Excel**: import your RTM.xlsm/xlsx (matched by header names), export to .xlsx.
 - **Google Drive storage**: sign in with Google, projects are Sheets in your Drive, share with colleagues via Google; changes from others appear within ~20 s.
 
+## Requirement versions
+
+A change to a requirement's **text, acceptance criteria, type or parent** starts a new version (v1 → v2).
+The old version is kept in full, with everything linked to it at the time (parent, tests, design, story, defects,
+files), in the project sheet **Versions**. Status, delivery, test and design progress stay in the same version.
+See them in the requirement's **Versions** tab and the table's **Ver** column; Excel export adds a **Version**
+column and a **Versions** sheet. Versions start counting from when this feature was added; older changes are in History.
+
 ## AI intake (Claude)
 
 The **AI** button (RTM tab) turns pasted text and files (PDF, images, Word, Excel, .txt/.md/.vtt/.srt/.csv) into proposed
