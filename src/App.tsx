@@ -59,13 +59,28 @@ function Login({ reason }: { reason?: string }) {
 
 export default function App() {
   const [email, setEmail] = useState<string | null>(store.signedInEmail())
-  const [expired, setExpired] = useState(false)
-  useEffect(() => store.onAuthChange(e => { setEmail(prev => { if (prev && !e) setExpired(true); return e }) }), [])
-  if (store.mode === 'google' && !email) return <Login reason={expired ? 'Your Google session expired (they last 1 hour). Sign in again — nothing is lost.' : undefined} />
-  return <Main email={email ?? ''} />
+  // Who was signed in during this page session. When the 1-hour Google session expires we keep the
+  // app (and any unsaved edits) mounted and ask to sign in again on top, instead of unmounting it.
+  const [lastEmail, setLastEmail] = useState<string | null>(email)
+  useEffect(() => store.onAuthChange(e => {
+    setEmail(e)
+    if (!e) return
+    setLastEmail(prev => { if (prev && prev !== e) window.location.reload(); return e })   // other account: start clean
+  }), [])
+  if (store.mode === 'google' && !email && !lastEmail) return <Login />
+  return (
+    <>
+      <Main email={email ?? lastEmail ?? ''} onSignOut={() => { setLastEmail(null); store.signOut() }} />
+      {store.mode === 'google' && !email && (
+        <div className="reauth" role="dialog" aria-modal="true" aria-label="Sign in again">
+          <Login reason="Your Google session expired (sessions last 1 hour). Sign in again to continue — your open work is still here." />
+        </div>
+      )}
+    </>
+  )
 }
 
-function Main({ email }: { email: string }) {
+function Main({ email, onSignOut }: { email: string; onSignOut: () => void }) {
   const { uuiNotifications, uuiModals } = useUuiContext()
   const [tab, setTab] = useState<Tab>(() => { const t = ls.get('rtm.tab'); return (t === 'tree' ? 'rtm' : t as Tab) || 'rtm' })
   const [view, setViewState] = useState<View>(() => ls.get('rtm.tab') === 'tree' || ls.get('rtm.view') === 'tree' ? 'tree' : 'list')
@@ -75,7 +90,9 @@ function Main({ email }: { email: string }) {
   const [pid, setPid] = useState(() => ls.get('rtm.project'))
   const [editProject, setEditProject] = useState<Project | null>(null)
   const [rows, setRows] = useState<Req[]>([])
-  const [editing, setEditing] = useState<{ r: Req; isNew: boolean } | null>(null)
+  // The open requirement belongs to one project and one tab; it is shown only there.
+  type Editing = { r: Req; isNew: boolean; pid: string; tab: Tab }
+  const [editing, setEditing] = useState<Editing | null>(null)
   const [q, setQ] = useState('')
   const [filters, setFiltersState] = useState<FilterState>(emptyFilters())
   const [tableState, setTableState] = useTableState(pid)
@@ -136,8 +153,11 @@ function Main({ email }: { email: string }) {
   // Details open in a side pane on the RTM tab (resizable split) and as a drawer elsewhere.
   const dirtyRef = useRef(false)
   const guard = () => !dirtyRef.current || confirm('Discard unsaved changes?')
-  const open = (r: Req) => { if (editing?.r.id === r.id && !editing.isNew) return; if (guard()) { dirtyRef.current = false; setEditing({ r, isNew: false }) } }
-  const startNew = () => { if (guard()) { dirtyRef.current = false; setEditing({ r: { ...emptyReq(nextIdFor(rows, cfg)), status: cfg.workflow.initial }, isNew: true }) } }
+  const open = (r: Req) => { if (editing?.r.id === r.id && !editing.isNew && editing.tab === activeTab) return; if (guard()) { dirtyRef.current = false; setEditing({ r, isNew: false, pid, tab: activeTab }) } }
+  const startNew = () => { if (guard()) { dirtyRef.current = false; setEditing({ r: { ...emptyReq(nextIdFor(rows, cfg)), status: cfg.workflow.initial }, isNew: true, pid, tab: activeTab }) } }
+  // Leaving the tab or project closes the open requirement (asks first if it has unsaved changes).
+  const leave = (go: () => void) => { if (editing && !guard()) return; dirtyRef.current = false; setEditing(null); go() }
+  const shown = editing && editing.pid === pid && editing.tab === activeTab ? editing : null
   const [paneW, setPaneW] = useState(() => Math.min(70, Math.max(25, Number(ls.get('rtm.paneW')) || 42)))
   const splitRef = useRef<HTMLDivElement>(null)
   const startDrag = (e: React.MouseEvent) => {
@@ -152,21 +172,22 @@ function Main({ email }: { email: string }) {
   const nudge = (d: number) => setPaneW(w => { const n = Math.min(70, Math.max(25, w + d)); ls.set('rtm.paneW', String(n)); return n })
   const paneMode = activeTab === 'rtm'
   function renderEditor(variant: 'pane' | 'drawer') {
-    if (!editing) return null
+    if (!shown) return null
+    const editing = shown
     return (
       <Editor key={(editing.isNew ? 'new:' : '') + editing.r.id} variant={variant} onDirty={d => { dirtyRef.current = d }}
-        projectId={pid} readOnly={project?.canEdit === false} allRows={rows} onOpenOther={x => { dirtyRef.current = false; setEditing({ r: x, isNew: false }) }}
+        projectId={pid} readOnly={project?.canEdit === false} allRows={rows} onOpenOther={x => { dirtyRef.current = false; setEditing({ r: x, isNew: false, pid: editing.pid, tab: editing.tab }) }}
         initial={editing.r} isNew={editing.isNew} existingIds={new Set(rows.map(r => r.id))}
         onClose={() => { dirtyRef.current = false; setEditing(null) }}
         onSave={async r => {
           const prev = editing.isNew ? undefined : rows.find(x => x.id === editing.r.id)
-          await store.saveReq(pid, r, prev)
+          await store.saveReq(editing.pid, r, prev)
           await reload(); dirtyRef.current = false
           // In the side pane the saved requirement stays open; the drawer closes.
-          setEditing(variant === 'pane' ? { r, isNew: false } : null)
+          setEditing(variant === 'pane' ? { r, isNew: false, pid: editing.pid, tab: editing.tab } : null)
           notify(`${r.id} saved`)
         }}
-        onDelete={async () => { await store.deleteReq(pid, editing.r); await reload(); dirtyRef.current = false; setEditing(null); notify(`${editing.r.id} deleted`) }}
+        onDelete={async () => { await store.deleteReq(editing.pid, editing.r); await reload(); dirtyRef.current = false; setEditing(null); notify(`${editing.r.id} deleted`) }}
       />
     )
   }
@@ -177,14 +198,14 @@ function Main({ email }: { email: string }) {
       <header className="topbar">
         <div className="brand">RTM tree</div>
         {liveProjects.length > 0 && (
-          <div className="project-pick"><Select value={pid} options={liveProjects.map(p => p.id)} labels={Object.fromEntries(liveProjects.map(p => [p.id, p.name]))} onChange={v => { setPid(v); if (activeTab === 'projects') setTab('rtm') }} placeholder="Select project" noClear /></div>
+          <div className="project-pick"><Select value={pid} options={liveProjects.map(p => p.id)} labels={Object.fromEntries(liveProjects.map(p => [p.id, p.name]))} onChange={v => leave(() => { setPid(v); if (activeTab === 'projects') setTab('rtm') })} placeholder="Select project" noClear /></div>
         )}
-        {TABS.map(([k, c]) => <TabButton key={k} caption={c} isActive={activeTab === k} isDisabled={k !== 'projects' && k !== 'guide' && !project} onClick={() => setTab(k)} size="60" cx="toptab" />)}
+        {TABS.map(([k, c]) => <TabButton key={k} caption={c} isActive={activeTab === k} isDisabled={k !== 'projects' && k !== 'guide' && !project} onClick={() => { if (k !== activeTab) leave(() => setTab(k)) }} size="60" cx="toptab" />)}
         <FlexSpacer />
         {store.mode === 'local'
           ? <Badge size="24" color="warning" caption="Local demo — data stays in this browser" />
           : <Text cx="who">{email}</Text>}
-        {store.mode === 'google' && <Button fill="none" color="white" caption="Sign out" onClick={() => store.signOut()} />}
+        {store.mode === 'google' && <Button fill="none" color="white" caption="Sign out" onClick={() => { if (!dirtyRef.current || confirm('Discard unsaved changes and sign out?')) onSignOut() }} />}
       </header>
 
       <main className="content">
@@ -206,17 +227,17 @@ function Main({ email }: { email: string }) {
           </FlexRow>
         )}
         {(activeTab === 'rtm' || activeTab === 'dashboard') && <ActiveFilters cfg={cfg} st={filters} onChange={setFilters} />}
-        {activeTab === 'projects' && projects && <ProjectsTab projects={projects} currentId={pid} onOpen={id => { setPid(id); setTab('rtm') }} onEdit={setEditProject} onChanged={loadProjects} notify={notify}
+        {activeTab === 'projects' && projects && <ProjectsTab projects={projects} currentId={pid} onOpen={id => leave(() => { setPid(id); setTab('rtm') })} onEdit={setEditProject} onChanged={loadProjects} notify={notify}
           onOpenShared={() => store.openSharedProject().then(async id => { if (id) { await loadProjects(); setPid(id); setTab('rtm'); notify('Shared project opened') } }).catch(e => notify(e.message, false))} />}
         {activeTab === 'dashboard' && <Dashboard rows={filtered} onOpen={open} />}
         {activeTab === 'rtm' && (
-          <div className={'split' + (editing ? ' with-pane' : '')} ref={splitRef}>
+          <div className={'split' + (shown ? ' with-pane' : '')} ref={splitRef}>
             <div className="split-main">
               {view === 'list'
-                ? <RtmTable rows={filtered} onOpen={open} state={tableState} setState={setTableState} fctx={fctx} selectedId={editing?.isNew ? undefined : editing?.r.id} />
-                : <TreeTable rows={rows} q={q} filters={filters} onOpen={open} selectedId={editing?.isNew ? undefined : editing?.r.id} fold={fold} />}
+                ? <RtmTable rows={filtered} onOpen={open} state={tableState} setState={setTableState} fctx={fctx} selectedId={shown?.isNew ? undefined : shown?.r.id} />
+                : <TreeTable rows={rows} q={q} filters={filters} onOpen={open} selectedId={shown?.isNew ? undefined : shown?.r.id} fold={fold} />}
             </div>
-            {editing && (
+            {shown && (
               <>
                 <div className="splitter" role="separator" aria-orientation="vertical" aria-label="Resize details panel" tabIndex={0}
                   onMouseDown={startDrag} onKeyDown={e => { if (e.key === 'ArrowLeft') nudge(2); if (e.key === 'ArrowRight') nudge(-2) }} />
@@ -229,7 +250,7 @@ function Main({ email }: { email: string }) {
         {activeTab === 'guide' && <Guide />}
       </main>
 
-      {editing && !paneMode && renderEditor('drawer')}
+      {shown && !paneMode && renderEditor('drawer')}
       {editProject && (
         <ProjectEditor initial={editProject} me={email} onClose={() => setEditProject(null)}
           onSaved={async pr => { setEditProject(null); await loadProjects(); if (!editProject.id) { setPid(pr.id); setTab('rtm') } notify(`Project "${pr.name}" saved`) }}

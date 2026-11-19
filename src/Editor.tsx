@@ -21,7 +21,7 @@ export function Editor(p: {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   useEffect(() => { setR(p.initial); setErr('') }, [p.initial])
-  useEffect(() => { if (tab === 'history' && !p.isNew) loadHistory(p.projectId, p.initial.id).then(setHist).catch(e => setErr(String(e.message ?? e))) }, [tab, p.initial.id, p.isNew, p.projectId])
+  useEffect(() => { setErr(''); if (tab === 'history' && !p.isNew) loadHistory(p.projectId, p.initial.id).then(setHist).catch(e => setErr(String(e.message ?? e))) }, [tab, p.initial.id, p.isNew, p.projectId])
 
   const cfg = useConfig()
   const set = (k: keyof Req, v: string) => setR(x => ({ ...x, [k]: v }))
