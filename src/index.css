@@ -17,9 +17,12 @@ a { color: var(--uui-text-link, var(--uui-primary-60)); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
 .app { display: flex; flex-direction: column; min-height: 100%; }
-.topbar { display: flex; align-items: center; gap: 6px; height: 60px; padding: 0 18px; background: var(--uui-main_menu-bg, #303240); color: #fff; position: sticky; top: 0; z-index: 5; }
+.topbar { display: flex; align-items: center; gap: 6px; height: 60px; padding: 0 18px; color: #fff; position: sticky; top: 0; z-index: 5;
+  background: linear-gradient(100deg, #1E0F3A 0%, #3B1D6B 32%, #2A3A5C 62%, #0F4D3A 86%, #13704B 100%); box-shadow: 0 2px 10px rgba(14, 6, 30, .25); }
 .brand { font-weight: 700; font-size: 20px; letter-spacing: .3px; margin-right: 18px; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.toptab.uui-active { border-color: #9EF0C0 !important; }
 .toptab { color: #fff !important; }
+.toptab.uui-disabled { color: rgba(255, 255, 255, .45) !important; }
 .who { color: #fff !important; opacity: .8; }
 .content { padding: 18px 24px 36px; flex: 1; min-width: 0; }
 
