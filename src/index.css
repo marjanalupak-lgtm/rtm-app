@@ -242,5 +242,6 @@ body.resizing { cursor: col-resize; user-select: none; }
 .vm-list { max-height: 320px; overflow-y: auto; }
 .vm-row { display: flex; align-items: center; padding-right: 8px; }
 .vm-row .vm-item { flex: 1; min-width: 0; }
-.vm-row .vm-del { opacity: .45; }
-.vm-row:hover .vm-del, .vm-row .vm-del:focus-visible { opacity: 1; }
+.vm-tick { display: inline-block; width: 16px; height: 16px; flex: none; color: var(--uui-primary); }
+.vm-row .vm-del { margin-left: 12px; flex: none; }
+.vm-row .vm-del:hover { color: var(--uui-critical, #E54322) !important; border-color: var(--uui-critical, #E54322) !important; background: #FFF1EE !important; }

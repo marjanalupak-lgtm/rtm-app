@@ -1,8 +1,12 @@
 // "View: …" menu next to Columns: switch between saved table views, save / update / rename / delete.
 import { useEffect, useState } from 'react'
 import { useUuiContext, type ColumnsConfig, type IModal } from '@epam/uui-core'
-import { Button, Dropdown, DropdownMenuBody, DropdownMenuButton, DropdownMenuHeader, DropdownMenuSplitter, FlexRow, IconButton, FlexSpacer, LabeledInput, ModalBlocker, ModalFooter, ModalHeader, ModalWindow, TextInput } from '@epam/uui'
+import { Button, Dropdown, DropdownMenuBody, DropdownMenuButton, DropdownMenuHeader, DropdownMenuSplitter, FlexRow, FlexSpacer, LabeledInput, ModalBlocker, ModalFooter, ModalHeader, ModalWindow, TextInput } from '@epam/uui'
 import { allViews, loadViews, newViewId, sameColumns, saveViews, PRESETS, type TableView } from './tableViews'
+
+const Tick = () => <svg className="vm-tick" width="16" height="16" viewBox="0 0 24 24" aria-hidden><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z" fill="currentColor" /></svg>
+const NoTick = () => <span className="vm-tick" aria-hidden />
+const Trash = () => <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6zm2-10h8v10H8zm7.5-5-1-1h-5l-1 1H5v2h14V4z" fill="currentColor" /></svg>
 
 function NameModal(p: IModal<string> & { title: string; initial: string; taken: string[] }) {
   const [name, setName] = useState(p.initial)
@@ -88,10 +92,12 @@ export function ViewMenu({ pid, allKeys, current, defaults, apply, notify }: {
           <div className="vm-list">
             {views.map(v => (
               <div key={v.id} className="vm-row">
-                <DropdownMenuButton cx="vm-item" caption={v.name + (v.builtIn && st.overrides[v.id] ? ' (edited)' : '')} isSelected={v.id === active.id}
+                <DropdownMenuButton cx="vm-item" icon={v.id === active.id ? Tick : NoTick} iconPosition="left"
+                  caption={v.name + (v.builtIn && st.overrides[v.id] ? ' (edited)' : '')}
+                  rawProps={{ 'aria-current': v.id === active.id ? 'true' : undefined }}
                   onClick={() => { switchTo(v); props.onClose?.() }} />
                 {v.id !== 'default' && (
-                  <IconButton cx="vm-del" icon={() => <span className="fchip-x" aria-hidden>×</span>} onClick={() => remove(v)}
+                  <Button cx="vm-del" size="24" fill="outline" color="secondary" icon={Trash} onClick={() => remove(v)}
                     rawProps={{ 'aria-label': `Delete view ${v.name}`, title: `Delete view “${v.name}”` }} />
                 )}
               </div>
