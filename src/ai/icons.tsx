@@ -28,3 +28,7 @@ export const FileIcon = ({ name, size = 18 }: { name: string; size?: number }) =
   )
 }
 export const sizeLabel = (b: number) => b < 1024 * 1024 ? `${Math.max(1, Math.round(b / 1024))} KB` : `${(b / 1024 / 1024).toFixed(1)} MB`
+export const Bulb = ({ size }: P) => svg(<><path d="M9 18h6" /><path d="M10 21h4" /><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V16h5v-.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z" /></>, size)
+export const Question = ({ size }: P) => svg(<><circle cx="12" cy="12" r="9" /><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14" /><path d="M12 17.5v.01" /></>, size)
+export const Arrow = ({ size }: P) => svg(<><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /></>, size)
+export const Quote = ({ size }: P) => svg(<><path d="M7 7h4v4c0 3-1.5 5-4 6" /><path d="M14 7h4v4c0 3-1.5 5-4 6" /></>, size)

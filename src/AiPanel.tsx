@@ -10,12 +10,13 @@ import { ACCEPT, checkSize, fileToBlocks, type Block } from './ai/inputs'
 import { AiError, describe, explain, getKey, runIntake } from './ai/client'
 import { APPENDED, allowedChanges, cardProblem, cardWarnings, planApply } from './ai/apply'
 import type { AiResult, Proposal, ProposalKind } from './ai/prompt'
-import { Check, FileIcon, Layers, Shield, sizeLabel, Sparkle, Upload } from './ai/icons'
+import { Arrow, Bulb, Check, FileIcon, Layers, Question, Quote, Shield, sizeLabel, Sparkle, Upload } from './ai/icons'
 
 const KIND: Record<ProposalKind, { label: string; color: 'success' | 'info' | 'neutral' | 'warning' }> = {
   new: { label: 'NEW', color: 'success' }, update: { label: 'UPDATE', color: 'info' },
   duplicate: { label: 'DUPLICATE', color: 'neutral' }, conflict: { label: 'CONFLICT', color: 'warning' },
 }
+const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`
 const today = () => new Date().toISOString().slice(0, 10)
 
 export function AiPanel(p: { pid: string; rows: Req[]; cfg: Config; me: string; onClose: () => void; onApplied: () => void | Promise<void>; notify: (m: string, ok?: boolean) => void; openSettingsAi: () => void }) {
@@ -48,7 +49,7 @@ export function AiPanel(p: { pid: string; rows: Req[]; cfg: Config; me: string; 
         try { blocks.push(...await fileToBlocks(f)) }
         catch (e) { throw new Error((e as Error).message.startsWith('unsupported:') ? `This file type isn't supported: ${f.name}` : `Couldn't read ${f.name}`) }
       }
-      setBusy('Claude is analysing… this can take a minute or two.')
+      setBusy('Claude is analysing…')
       const r = await runIntake({ rows, cfg, text, blocks, signal: abort.current.signal })
       setRes(r); setCards(r.proposals)
       setTicked(new Set(r.proposals.map((x, i) => (x.kind === 'new' || x.kind === 'update') && !cardProblem(x, rows, cfg) ? i : -1).filter(i => i >= 0)))
@@ -92,7 +93,7 @@ export function AiPanel(p: { pid: string; rows: Req[]; cfg: Config; me: string; 
           <span className="ai-head-icon"><Sparkle size={22} /></span>
           <div className="ai-head-text">
             <h2>AI intake</h2>
-            <p>{res ? `${counts('new')} new · ${counts('update')} updates · ${counts('duplicate')} duplicates · ${counts('conflict')} conflicts` : 'Turn notes, documents and transcripts into structured requirements.'}</p>
+            <p>{res ? `${counts('new')} new · ${plural(counts('update'), 'update')} · ${plural(counts('duplicate'), 'duplicate')} · ${plural(counts('conflict'), 'conflict')}` : 'Turn notes, documents and transcripts into structured requirements.'}</p>
           </div>
           <button className="ai-close" onClick={close} aria-label="Close AI intake">×</button>
         </header>
@@ -169,7 +170,10 @@ export function AiPanel(p: { pid: string; rows: Req[]; cfg: Config; me: string; 
                   </button>
                 ))}
               </div>
-              {res.structure.length > 0 && <section className="ai-sec"><Text fontWeight="600">Structure suggestions</Text><ul>{res.structure.map((s, i) => <li key={i}>{s}</li>)}</ul></section>}
+              {res.structure.length > 0 && (
+                <section className="ai-note"><span className="ai-note-ic"><Bulb size={16} /></span>
+                  <div><b>Structure suggestions</b><ul>{res.structure.map((s, i) => <li key={i}>{s}</li>)}</ul></div></section>
+              )}
 
 
               {shown.map(([c, i]) => {
@@ -209,16 +213,25 @@ export function AiPanel(p: { pid: string; rows: Req[]; cfg: Config; me: string; 
                     )}
                     {warn.map(w => <Text key={w} fontSize="12" cx="ai-warn">⚠ {w}</Text>)}
                     {c.kind !== 'new' && c.statement && !c.changes.statement && <Text fontSize="14">{c.statement}</Text>}
-                    <Text fontSize="12" color="secondary">{c.reason}{c.source ? ` — source: ${c.source}` : ''}</Text>
+                    <div className="ai-why">
+                      {c.reason && <span><Bulb size={14} /> {c.reason}</span>}
+                      {c.source && <span><Quote size={14} /> {c.source}</span>}
+                    </div>
                   </div>
                 )
               })}
 
-              {res.questions.length > 0 && <section className="ai-sec"><Text fontWeight="600">Open questions</Text><ul>{res.questions.map((s, i) => <li key={i}>{s}</li>)}</ul></section>}
-              {res.nextSteps.length > 0 && <section className="ai-sec"><Text fontWeight="600">Next steps</Text><ul>{res.nextSteps.map((s, i) => <li key={i}>{s}</li>)}</ul></section>}
+              {res.questions.length > 0 && (
+                <section className="ai-note q"><span className="ai-note-ic"><Question size={16} /></span>
+                  <div><b>Open questions</b><ul>{res.questions.map((s, i) => <li key={i}>{s}</li>)}</ul></div></section>
+              )}
+              {res.nextSteps.length > 0 && (
+                <section className="ai-note n"><span className="ai-note-ic"><Arrow size={16} /></span>
+                  <div><b>Next steps</b><ul>{res.nextSteps.map((s, i) => <li key={i}>{s}</li>)}</ul></div></section>
+              )}
 
-              <section className="ai-sec">
-                <Text fontWeight="600">For new requirements</Text>
+              <section className="ai-sec ai-defaults">
+                <Text fontWeight="600">Defaults for new requirements</Text>
                 <div className="ai-grid">
                   <LabeledInput label="Release">{cfg.lists.release.length
                     ? <Select value={defs.release} options={cfg.lists.release} onChange={v => setDefs(d => ({ ...d, release: v }))} />
