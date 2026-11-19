@@ -39,6 +39,7 @@ export function Editor(p: {
   const needsArea = !!sc?.types[r.type]?.area
   const [area, setArea] = useState(sc?.areas[0]?.code ?? '')
   const [idTouched, setIdTouched] = useState(false)
+  const idHint = sc ? 'Filled in from type and area (next free number). Never reuse an ID.' : `Stable ID, e.g. ${cfg.id.prefix}${'1'.padStart(cfg.id.digits, '0')}. Never reuse.`
   useEffect(() => {
     if (!sc || idTouched) return
     const n = nextSchemeId(p.allRows, sc, r.type, area) ?? ''
@@ -154,7 +155,7 @@ export function Editor(p: {
                   {fs.map(f => (
                     <div key={f.key} className={f.long ? 'span2' : ''}>
                       <LabeledInput label={cfg.fields[f.key].label} isRequired={cfg.fields[f.key].required} sidenote={!cfg.fields[f.key].required && f.req === '†' ? 'conditional' : undefined}
-                        footnote={f.key === 'status' && r.status && GATES[r.status] ? 'Gate: ' + GATES[r.status] : f.help}>
+                        footnote={f.key === 'status' && r.status && GATES[r.status] ? 'Gate: ' + GATES[r.status] : f.key === 'id' ? idHint : f.help}>
                         {input(f)}
                       </LabeledInput>
                     </div>
